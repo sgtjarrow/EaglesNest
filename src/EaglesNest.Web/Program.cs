@@ -5,7 +5,7 @@ using EaglesNest.Web.Components;
 using EaglesNest.Web.Components.Account;
 using EaglesNest.Web.Data;
 using EaglesNest.Web.Data.Seed;
-using EaglesNest.Web.Services.Organizations;
+using EaglesNest.Web.Services.Chapters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,7 +29,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-builder.Services.AddScoped<OrganizationAdminService>();
+builder.Services.AddScoped<ChapterAdminService>();
 builder.Services.Configure<DevelopmentSuperAdminOptions>(builder.Configuration.GetSection("DevelopmentSuperAdmin"));
 
 builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
@@ -50,7 +50,7 @@ if (app.Environment.IsDevelopment())
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var superAdminOptions = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<DevelopmentSuperAdminOptions>>();
     await dbContext.Database.MigrateAsync();
-    await OrganizationSeeder.SeedAsync(dbContext);
+    await ChapterSeeder.SeedAsync(dbContext);
     await DevelopmentSuperAdminSeeder.SeedAsync(dbContext, userManager, superAdminOptions);
 }
 else

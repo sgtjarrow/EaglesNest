@@ -1,4 +1,4 @@
-namespace EaglesNest.Web.Services.Organizations;
+namespace EaglesNest.Web.Services.Chapters;
 
 public class StateChapterAssignmentModel
 {

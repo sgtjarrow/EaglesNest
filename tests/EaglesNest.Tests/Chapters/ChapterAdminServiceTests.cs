@@ -1,13 +1,13 @@
 using EaglesNest.Core.Domain;
 using EaglesNest.Web.Data;
-using EaglesNest.Web.Services.Organizations;
+using EaglesNest.Web.Services.Chapters;
 using Microsoft.EntityFrameworkCore;
 
-namespace EaglesNest.Tests.Organizations;
+namespace EaglesNest.Tests.Chapters;
 
-public class OrganizationAdminServiceTests
+public class ChapterAdminServiceTests
 {
-    private static readonly OrganizationActor TestActor = new("user-1", "tester@example.com", "User");
+    private static readonly ChapterActor TestActor = new("user-1", "tester@example.com", "User");
 
     [Fact]
     public async Task CreateAsync_RejectsDuplicateAbbreviation()
@@ -16,9 +16,9 @@ public class OrganizationAdminServiceTests
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
-        var result = await service.CreateAsync(new OrganizationEditModel
+        var result = await service.CreateAsync(new ChapterEditModel
         {
             Name = "Duplicate National",
             Abbreviation = "NAT",
@@ -39,9 +39,9 @@ public class OrganizationAdminServiceTests
         var chapter = AddOrganization(dbContext, "Atlanta", "GA-1", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
-        var result = await service.CreateAsync(new OrganizationEditModel
+        var result = await service.CreateAsync(new ChapterEditModel
         {
             Name = "Bad State",
             Abbreviation = "BAD",
@@ -62,7 +62,7 @@ public class OrganizationAdminServiceTests
         AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id, OrganizationStatus.Operating);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
         var defaultHierarchy = await service.GetHierarchyAsync();
         var fullHierarchy = await service.GetHierarchyAsync(includeUnavailable: true);
@@ -78,7 +78,7 @@ public class OrganizationAdminServiceTests
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
         var result = await service.CloseAsync(national.Id, TestActor);
 
@@ -94,7 +94,7 @@ public class OrganizationAdminServiceTests
         var eternal = AddOrganization(dbContext, "Eternal Chapter", "Chapter-100", OrganizationLevel.LocalChapter, national.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
         Assert.False((await service.CloseAsync(eternal.Id, TestActor)).Succeeded);
         Assert.False((await service.SuspendAsync(eternal.Id, DateOnly.FromDateTime(DateTime.UtcNow), null, null, TestActor)).Succeeded);
@@ -110,7 +110,7 @@ public class OrganizationAdminServiceTests
         var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
         Assert.True((await service.CloseAsync(chapter.Id, TestActor)).Succeeded);
         Assert.Equal(OrganizationStatus.Closed, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
@@ -128,7 +128,7 @@ public class OrganizationAdminServiceTests
         var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
         var startsOn = new DateOnly(2026, 5, 31);
         var endsOn = new DateOnly(2026, 6, 30);
 
@@ -150,7 +150,7 @@ public class OrganizationAdminServiceTests
         var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
         var startsOn = DateOnly.FromDateTime(DateTime.UtcNow);
         var plannedEndsOn = startsOn.AddDays(30);
 
@@ -171,7 +171,7 @@ public class OrganizationAdminServiceTests
         var secondChapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
         Assert.True((await service.AssignStateChapterAsync(state.Id, firstChapter.Id, new DateOnly(2026, 1, 1), null, TestActor)).Succeeded);
         Assert.True((await service.AssignStateChapterAsync(state.Id, secondChapter.Id, new DateOnly(2026, 5, 31), null, TestActor)).Succeeded);
@@ -190,7 +190,7 @@ public class OrganizationAdminServiceTests
         var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
         await service.CloseAsync(state.Id, TestActor);
 
@@ -209,10 +209,10 @@ public class OrganizationAdminServiceTests
         var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
         var charterDate = new DateOnly(2020, 1, 2);
 
-        var result = await service.UpdateAsync(chapter.Id, new OrganizationEditModel
+        var result = await service.UpdateAsync(chapter.Id, new ChapterEditModel
         {
             Id = chapter.Id,
             Name = "Tampa",
@@ -240,9 +240,9 @@ public class OrganizationAdminServiceTests
         var chapter = AddOrganization(dbContext, "IRREGULARS", "AL-4", OrganizationLevel.LocalChapter, state.Id);
         await dbContext.SaveChangesAsync();
 
-        var service = new OrganizationAdminService(dbContext);
+        var service = new ChapterAdminService(dbContext);
 
-        var result = await service.UpdateAsync(chapter.Id, new OrganizationEditModel
+        var result = await service.UpdateAsync(chapter.Id, new ChapterEditModel
         {
             Id = chapter.Id,
             Name = "IRREGULARS",

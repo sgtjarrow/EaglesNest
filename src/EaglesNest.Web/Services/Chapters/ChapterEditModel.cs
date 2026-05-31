@@ -1,9 +1,9 @@
 using System.ComponentModel.DataAnnotations;
 using EaglesNest.Core.Domain;
 
-namespace EaglesNest.Web.Services.Organizations;
+namespace EaglesNest.Web.Services.Chapters;
 
-public class OrganizationEditModel
+public class ChapterEditModel
 {
     public Guid? Id { get; set; }
 

@@ -1,8 +1,8 @@
 using EaglesNest.Core.Domain;
 
-namespace EaglesNest.Web.Services.Organizations;
+namespace EaglesNest.Web.Services.Chapters;
 
-public class OrganizationTreeItem
+public class ChapterTreeItem
 {
     public Guid Id { get; set; }
     public Guid? ParentOrganizationUnitId { get; set; }
@@ -17,5 +17,5 @@ public class OrganizationTreeItem
     public Guid? ActingStateChapterId { get; set; }
     public string? ActingStateChapterAbbreviation { get; set; }
     public string? ActingStateChapterName { get; set; }
-    public List<OrganizationTreeItem> Children { get; set; } = [];
+    public List<ChapterTreeItem> Children { get; set; } = [];
 }

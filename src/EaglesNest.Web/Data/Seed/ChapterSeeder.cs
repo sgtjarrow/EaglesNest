@@ -1,11 +1,11 @@
 using EaglesNest.Core.Domain;
-using EaglesNest.Web.Services.Organizations;
+using EaglesNest.Web.Services.Chapters;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 
 namespace EaglesNest.Web.Data.Seed;
 
-public static class OrganizationSeeder
+public static class ChapterSeeder
 {
     private static readonly StateSeed[] States =
     [
@@ -480,10 +480,10 @@ public static class OrganizationSeeder
         unit.Name = ToTitleCase(name);
         unit.Level = level;
         unit.ParentOrganizationUnitId = parentId;
-        unit.City = OrganizationAdminService.IsEternalChapter(unit.Abbreviation) || level == OrganizationLevel.National ? null : city;
-        unit.StateCode = OrganizationAdminService.IsEternalChapter(unit.Abbreviation) || level == OrganizationLevel.National ? null : stateCode;
+        unit.City = ChapterAdminService.IsEternalChapter(unit.Abbreviation) || level == OrganizationLevel.National ? null : city;
+        unit.StateCode = ChapterAdminService.IsEternalChapter(unit.Abbreviation) || level == OrganizationLevel.National ? null : stateCode;
 
-        if (OrganizationAdminService.IsEternalChapter(unit.Abbreviation))
+        if (ChapterAdminService.IsEternalChapter(unit.Abbreviation))
         {
             unit.MailingAddressLine1 = null;
             unit.MailingAddressLine2 = null;
@@ -564,7 +564,7 @@ public static class OrganizationSeeder
                 LocalChapterOrganizationUnitId = chapter.Id,
                 StartsOn = DateOnly.FromDateTime(DateTime.UtcNow),
                 Notes = "Seeded from roster state designation.",
-                ActorName = "OrganizationSeeder",
+                ActorName = "ChapterSeeder",
                 ActorSource = "DevelopmentSeeder"
             });
         }
