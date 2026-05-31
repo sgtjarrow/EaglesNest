@@ -12,6 +12,16 @@ Eagles Nest is planned as a Microsoft-native web application for managing U.S. M
 - `EaglesNest.Web` for the Blazor UI and Identity host
 - `EaglesNest.Tests` for automated tests
 
+## Development Seed Data
+
+When the web app starts in Development, it applies EF Core migrations and seeds the organization hierarchy:
+
+- `National` with abbreviation `NAT`
+- All 50 states using club abbreviations, including `FLA` for Florida and `WVA` for West Virginia
+- Current local chapter structure parsed from the April 2026 roster, without committing officer names, email addresses, phone numbers, or mailing addresses
+
+Confidential roster files should stay outside the repository and be imported through dedicated local import tooling.
+
 ## Source Control
 
 This repository is configured for Visual Studio 2026 as the primary Git experience.

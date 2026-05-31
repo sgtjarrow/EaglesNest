@@ -8,7 +8,10 @@ public class OrganizationUnit
     public ICollection<OrganizationUnit> Children { get; set; } = [];
     public OrganizationLevel Level { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string Abbreviation { get; set; } = string.Empty;
     public string? CharterNumber { get; set; }
+    public string? City { get; set; }
+    public string? StateCode { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

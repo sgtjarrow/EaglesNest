@@ -10,7 +10,11 @@ public static class ModelConfiguration
         modelBuilder.Entity<OrganizationUnit>(entity =>
         {
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Abbreviation).HasMaxLength(25).IsRequired();
             entity.Property(e => e.CharterNumber).HasMaxLength(50);
+            entity.Property(e => e.City).HasMaxLength(100);
+            entity.Property(e => e.StateCode).HasMaxLength(10);
+            entity.HasIndex(e => e.Abbreviation).IsUnique();
             entity.HasOne(e => e.ParentOrganizationUnit)
                 .WithMany(e => e.Children)
                 .HasForeignKey(e => e.ParentOrganizationUnitId)

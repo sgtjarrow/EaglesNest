@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using EaglesNest.Web.Components;
 using EaglesNest.Web.Components.Account;
 using EaglesNest.Web.Data;
+using EaglesNest.Web.Data.Seed;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,6 +42,10 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
+    await using var scope = app.Services.CreateAsyncScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    await dbContext.Database.MigrateAsync();
+    await OrganizationSeeder.SeedAsync(dbContext);
 }
 else
 {
