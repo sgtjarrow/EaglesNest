@@ -38,6 +38,19 @@
 
         <AuthorizeView>
             <Authorized>
+                <div class="nav-item px-3 mt-2 text-uppercase text-light opacity-75 small">
+                    Admin
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="admin/organizations">
+                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Organizations
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView>
+            <Authorized>
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="Account/Manage">
                         <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @context.User.Identity?.Name

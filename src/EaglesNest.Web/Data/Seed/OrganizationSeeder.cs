@@ -227,12 +227,6 @@ public static class OrganizationSeeder
         var unit = await dbContext.OrganizationUnits.SingleOrDefaultAsync(existing => existing.Abbreviation == abbreviation);
         if (unit is not null)
         {
-            unit.Name = name;
-            unit.Level = level;
-            unit.ParentOrganizationUnitId = parentId;
-            unit.City = city;
-            unit.StateCode = stateCode;
-            unit.IsActive = true;
             return unit;
         }
 
