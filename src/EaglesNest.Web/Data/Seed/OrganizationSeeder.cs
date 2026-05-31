@@ -190,14 +190,72 @@ public static class OrganizationSeeder
         new("Maniacs", "ME-1", "ME", null, "ME"),
         new("Bonney Lake", "WA-1", "WA", null, "WA"),
         new("Bushwhackers", "MO-1", "MO", null, "MO"),
+        new("IN", "IN-2", "IN", "New Palestine", "IN"),
+        new("GA", "GA-9", "GA", "Milledgeville", "GA"),
+        new("TN", "TN-1", "TN", "Millington", "TN"),
+        new("PA", "PA-1", "PA", "New Castle", "PA"),
+        new("MD", "MD-1", "MD", "Hagerstown", "MD"),
+        new("NJ", "NJ-1", "NJ", "Cape May Court House", "NJ"),
+        new("WI", "WI-2", "WI", "Poynette", "WI"),
+        new("VA", "VA-3", "VA", "Woodbridge", "VA"),
+        new("NC", "NC-2", "NC", "Barium Springs", "NC"),
+        new("MS", "MS-1", "MS", "Ocean Springs", "MS"),
+        new("CT", "CT-1", "CT", "Vernon", "CT"),
+        new("IL", "IL-1", "IL", "Fithian", "IL"),
+        new("NM", "NM-1", "NM", "McIntosh", "NM"),
+        new("MN", "MN-1", "MN", "Alexandria", "MN"),
         new("Eternal Chapter", "US-100", "NAT", null, "US")
+    ];
+
+    private static readonly StateChapterSeed[] StateChapterAssignments =
+    [
+        new("FLA", "FLA-1"),
+        new("IN", "IN-2"),
+        new("TX", "TX-2"),
+        new("GA", "GA-9"),
+        new("TN", "TN-1"),
+        new("PA", "PA-1"),
+        new("MD", "MD-1"),
+        new("NY", "NY-6"),
+        new("WVA", "WVA-1"),
+        new("NJ", "NJ-1"),
+        new("WI", "WI-2"),
+        new("MA", "MA-1"),
+        new("VA", "VA-3"),
+        new("OK", "OK-2"),
+        new("OH", "OH-2"),
+        new("AL", "AL-4"),
+        new("MI", "MI-1"),
+        new("ND", "ND-1"),
+        new("NC", "NC-2"),
+        new("SD", "SD-3"),
+        new("SC", "SC-3"),
+        new("MS", "MS-1"),
+        new("CT", "CT-1"),
+        new("KY", "KY-1"),
+        new("AZ", "AZ-2"),
+        new("LA", "LA-1"),
+        new("NH", "NH-1"),
+        new("DE", "DE-1"),
+        new("IL", "IL-1"),
+        new("ME", "ME-1"),
+        new("NM", "NM-1"),
+        new("WA", "WA-1"),
+        new("MO", "MO-1"),
+        new("MN", "MN-1")
     ];
 
     public static async Task SeedAsync(ApplicationDbContext dbContext)
     {
         var national = await GetOrCreateAsync(dbContext, "National", "NAT", OrganizationLevel.National, null, null, null);
 
-        foreach (var state in States)
+        var requiredStateAbbreviations = Chapters
+            .Where(chapter => chapter.ParentAbbreviation != "NAT")
+            .Select(chapter => chapter.ParentAbbreviation)
+            .Distinct()
+            .ToHashSet();
+
+        foreach (var state in States.Where(state => requiredStateAbbreviations.Contains(state.Abbreviation)))
         {
             await GetOrCreateAsync(dbContext, state.Name, state.Abbreviation, OrganizationLevel.State, national.Id, null, StateCodeFromAbbreviation(state.Abbreviation));
         }
@@ -211,6 +269,9 @@ public static class OrganizationSeeder
 
             await GetOrCreateAsync(dbContext, chapter.Name, chapter.Abbreviation, OrganizationLevel.LocalChapter, parentId, chapter.City, chapter.StateCode);
         }
+
+        await SoftCloseEmptyStatesAsync(dbContext, requiredStateAbbreviations);
+        await SeedStateChapterAssignmentsAsync(dbContext);
 
         await dbContext.SaveChangesAsync();
     }
@@ -239,12 +300,60 @@ public static class OrganizationSeeder
             ParentOrganizationUnitId = parentId,
             City = city,
             StateCode = stateCode,
-            IsActive = true
+            Status = OrganizationStatus.Operating
         };
 
         dbContext.OrganizationUnits.Add(unit);
         await dbContext.SaveChangesAsync();
         return unit;
+    }
+
+    private static async Task SoftCloseEmptyStatesAsync(ApplicationDbContext dbContext, HashSet<string> requiredStateAbbreviations)
+    {
+        var states = await dbContext.OrganizationUnits
+            .Where(unit => unit.Level == OrganizationLevel.State)
+            .ToListAsync();
+
+        foreach (var state in states.Where(state => !requiredStateAbbreviations.Contains(state.Abbreviation)))
+        {
+            var hasChildren = await dbContext.OrganizationUnits.AnyAsync(unit => unit.ParentOrganizationUnitId == state.Id);
+            if (!hasChildren)
+            {
+                state.Status = OrganizationStatus.Closed;
+            }
+        }
+    }
+
+    private static async Task SeedStateChapterAssignmentsAsync(ApplicationDbContext dbContext)
+    {
+        var units = await dbContext.OrganizationUnits.ToDictionaryAsync(unit => unit.Abbreviation);
+        foreach (var assignment in StateChapterAssignments)
+        {
+            if (!units.TryGetValue(assignment.StateAbbreviation, out var state) ||
+                !units.TryGetValue(assignment.ChapterAbbreviation, out var chapter))
+            {
+                continue;
+            }
+
+            var hasCurrentAssignment = await dbContext.StateChapterAssignments
+                .AnyAsync(existing => existing.StateOrganizationUnitId == state.Id && existing.EndsOn == null);
+
+            if (hasCurrentAssignment)
+            {
+                continue;
+            }
+
+            dbContext.StateChapterAssignments.Add(new StateChapterAssignment
+            {
+                Id = Guid.NewGuid(),
+                StateOrganizationUnitId = state.Id,
+                LocalChapterOrganizationUnitId = chapter.Id,
+                StartsOn = DateOnly.FromDateTime(DateTime.UtcNow),
+                Notes = "Seeded from roster state designation.",
+                ActorName = "OrganizationSeeder",
+                ActorSource = "DevelopmentSeeder"
+            });
+        }
     }
 
     private static string StateCodeFromAbbreviation(string abbreviation)
@@ -260,4 +369,6 @@ public static class OrganizationSeeder
     private sealed record StateSeed(string Name, string Abbreviation);
 
     private sealed record ChapterSeed(string Name, string Abbreviation, string ParentAbbreviation, string? City, string? StateCode);
+
+    private sealed record StateChapterSeed(string StateAbbreviation, string ChapterAbbreviation);
 }

@@ -18,6 +18,10 @@
     <button type="button" class="btn btn-primary" @onclick="AddNational" disabled="@HasNational">Add National</button>
     <button type="button" class="btn btn-outline-primary" @onclick="AddState" disabled="@(!CanAddState)">Add State</button>
     <button type="button" class="btn btn-outline-primary" @onclick="AddChapter" disabled="@(!CanAddChapter)">Add Chapter</button>
+    <div class="form-check form-switch ms-xl-auto">
+        <InputCheckbox id="include-unavailable" class="form-check-input" @bind-Value="IncludeUnavailable" />
+        <label class="form-check-label" for="include-unavailable">Include closed/suspended</label>
+    </div>
 </div>
 
 @if (!string.IsNullOrWhiteSpace(statusMessage))
@@ -44,15 +48,19 @@
                     {
                         var selected = row.Item.Id == selectedOrganizationId;
                         <button type="button"
-                                class="organization-row @(selected ? "selected" : null) @(row.Item.IsActive ? null : "inactive")"
+                                class="organization-row @(selected ? "selected" : null) @(row.Item.Status == OrganizationStatus.Operating ? null : "unavailable")"
                                 style="--indent:@row.Depth"
                                 @onclick="() => SelectOrganization(row.Item.Id)">
                             <span class="organization-name">@row.Item.Name</span>
                             <span class="badge text-bg-light">@row.Item.Abbreviation</span>
-                            <span class="organization-meta">@row.Item.Level</span>
-                            @if (!row.Item.IsActive)
+                            <span class="organization-meta">@DisplayLevel(row.Item.Level)</span>
+                            @if (row.Item.Status != OrganizationStatus.Operating)
                             {
-                                <span class="badge text-bg-warning">Inactive</span>
+                                <span class="badge @StatusBadgeClass(row.Item.Status)">@row.Item.Status</span>
+                            }
+                            @if (row.Item.Level == OrganizationLevel.State && row.Item.ActingStateChapterAbbreviation is not null)
+                            {
+                                <span class="organization-meta state-assignment">State: @row.Item.ActingStateChapterAbbreviation</span>
                             }
                         </button>
                     }
@@ -80,7 +88,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="org-level">Level</label>
-                        <InputSelect id="org-level" class="form-select" @bind-Value="editModel.Level">
+                        <InputSelect id="org-level" class="form-select" @bind-Value="editModel.Level" disabled="@(editModel.Id is not null)">
                             <option value="@OrganizationLevel.National">National</option>
                             <option value="@OrganizationLevel.State">State</option>
                             <option value="@OrganizationLevel.LocalChapter">Local Chapter</option>
@@ -105,14 +113,11 @@
                         <InputText id="org-state-code" class="form-control text-uppercase" @bind-Value="editModel.StateCode" />
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label" for="org-charter">Charter Number</label>
-                        <InputText id="org-charter" class="form-control" @bind-Value="editModel.CharterNumber" />
+                        <label class="form-label" for="org-charter-date">Charter Date</label>
+                        <InputDate id="org-charter-date" class="form-control" @bind-Value="editModel.CharterDate" />
                     </div>
                     <div class="col-12">
-                        <div class="form-check form-switch">
-                            <InputCheckbox id="org-active" class="form-check-input" @bind-Value="editModel.IsActive" disabled="@(editModel.Level == OrganizationLevel.National)" />
-                            <label class="form-check-label" for="org-active">Active</label>
-                        </div>
+                        <span class="badge @StatusBadgeClass(editModel.Status)">Status: @editModel.Status</span>
                     </div>
                 </div>
 
@@ -121,16 +126,111 @@
                     <button type="button" class="btn btn-outline-secondary" @onclick="CancelEdit">Cancel</button>
                     @if (editModel.Id is not null && editModel.Level != OrganizationLevel.National)
                     {
-                        <button type="button" class="btn btn-outline-warning" @onclick="ToggleActiveAsync">
-                            @(editModel.IsActive ? "Deactivate" : "Reactivate")
-                        </button>
+                        @if (editModel.Status == OrganizationStatus.Closed)
+                        {
+                            <button type="button" class="btn btn-outline-success" @onclick="ReopenAsync">Reopen</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-outline-warning" @onclick="CloseAsync">Close</button>
+                        }
                     }
-                    @if (canDelete)
+                    @if (editModel.Id is not null && editModel.Level == OrganizationLevel.LocalChapter && editModel.Status == OrganizationStatus.Suspended)
                     {
-                        <button type="button" class="btn btn-outline-danger" @onclick="DeleteAsync">Delete</button>
+                        <button type="button" class="btn btn-outline-success" @onclick="EndSuspensionAsync">End Suspension</button>
                     }
                 </div>
             </EditForm>
+
+            @if (editModel.Id is not null && editModel.Level == OrganizationLevel.LocalChapter && editModel.Status == OrganizationStatus.Operating)
+            {
+                <hr />
+                <h3 class="h5">Suspend Chapter</h3>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label" for="suspension-start">Start Date</label>
+                        <InputDate id="suspension-start" class="form-control" @bind-Value="suspensionStart" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="suspension-end">Planned End Date</label>
+                        <InputDate id="suspension-end" class="form-control" @bind-Value="suspensionEnd" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="suspension-notes">Notes</label>
+                        <InputText id="suspension-notes" class="form-control" @bind-Value="suspensionNotes" />
+                    </div>
+                    <div class="col-12">
+                        <button type="button" class="btn btn-outline-warning" @onclick="SuspendAsync">Suspend</button>
+                    </div>
+                </div>
+            }
+
+            @if (currentSuspension is not null)
+            {
+                <div class="alert alert-warning mt-3">
+                    Current suspension started @currentSuspension.StartsOn.ToString("yyyy-MM-dd").
+                    @if (currentSuspension.EndsOn is not null)
+                    {
+                        <span>Planned end: @currentSuspension.EndsOn.Value.ToString("yyyy-MM-dd").</span>
+                    }
+                </div>
+            }
+
+            @if (editModel.Id is not null && editModel.Level == OrganizationLevel.State)
+            {
+                <hr />
+                <h3 class="h5">Acting State Chapter</h3>
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-5">
+                        <label class="form-label" for="state-chapter">Local Chapter</label>
+                        <InputSelect id="state-chapter" class="form-select" @bind-Value="selectedStateChapterId">
+                            <option value="">Select chapter</option>
+                            @foreach (var chapter in stateChapterOptions)
+                            {
+                                <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                            }
+                        </InputSelect>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="state-chapter-start">Start Date</label>
+                        <InputDate id="state-chapter-start" class="form-control" @bind-Value="stateChapterStart" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="state-chapter-notes">Notes</label>
+                        <InputText id="state-chapter-notes" class="form-control" @bind-Value="stateChapterNotes" />
+                    </div>
+                    <div class="col-12">
+                        <button type="button" class="btn btn-outline-primary" @onclick="AssignStateChapterAsync">Assign State Chapter</button>
+                    </div>
+                </div>
+
+                @if (stateAssignments.Count > 0)
+                {
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Chapter</th>
+                                    <th>Start</th>
+                                    <th>End</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var assignment in stateAssignments)
+                                {
+                                    <tr>
+                                        <td>@assignment.LocalChapterAbbreviation - @assignment.LocalChapterName</td>
+                                        <td>@assignment.StartsOn.ToString("yyyy-MM-dd")</td>
+                                        <td>@(assignment.EndsOn?.ToString("yyyy-MM-dd") ?? "Current")</td>
+                                        <td>@assignment.Notes</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
         </div>
     </section>
 </div>
@@ -152,7 +252,7 @@
 
     .organization-row {
         display: grid;
-        grid-template-columns: minmax(10rem, 1fr) auto auto auto;
+        grid-template-columns: minmax(10rem, 1fr) auto auto auto auto;
         gap: .5rem;
         align-items: center;
         width: 100%;
@@ -169,8 +269,8 @@
         background: #eef5ff;
     }
 
-    .organization-row.inactive {
-        opacity: .62;
+    .organization-row.unavailable {
+        opacity: .68;
     }
 
     .organization-name {
@@ -181,19 +281,47 @@
         color: #6c757d;
         font-size: .875rem;
     }
+
+    .state-assignment {
+        white-space: nowrap;
+    }
 </style>
 
 @code {
     private IReadOnlyList<OrganizationTreeItem> hierarchy = [];
     private IReadOnlyList<OrganizationTreeItem> parentOptions = [];
+    private IReadOnlyList<OrganizationTreeItem> stateChapterOptions = [];
+    private IReadOnlyList<StateChapterAssignmentModel> stateAssignments = [];
     private List<OrganizationDisplayRow> displayRows = [];
     private OrganizationEditModel editModel = new();
+    private ChapterSuspension? currentSuspension;
     private Guid? selectedOrganizationId;
+    private Guid? selectedStateChapterId;
     private string? statusMessage;
     private string statusClass = "alert-info";
     private string? searchText;
-    private bool canDelete;
     private string editorTitle = "Select or add an organization";
+    private DateOnly suspensionStart = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly? suspensionEnd;
+    private string? suspensionNotes;
+    private DateOnly stateChapterStart = DateOnly.FromDateTime(DateTime.Today);
+    private string? stateChapterNotes;
+    private bool includeUnavailable;
+
+    private bool IncludeUnavailable
+    {
+        get => includeUnavailable;
+        set
+        {
+            if (includeUnavailable == value)
+            {
+                return;
+            }
+
+            includeUnavailable = value;
+            _ = InvokeAsync(async () => await LoadAsync());
+        }
+    }
 
     private string? SearchText
     {
@@ -222,7 +350,7 @@
 
     private async Task LoadAsync()
     {
-        hierarchy = await OrganizationService.GetHierarchyAsync();
+        hierarchy = await OrganizationService.GetHierarchyAsync(includeUnavailable);
         parentOptions = await OrganizationService.GetParentOptionsAsync();
         RefreshDisplayRows();
     }
@@ -291,8 +419,26 @@
         selectedOrganizationId = id;
         editModel = organization;
         editorTitle = $"Edit {organization.Abbreviation}";
-        canDelete = await OrganizationService.CanDeleteAsync(id);
+        currentSuspension = organization.Status == OrganizationStatus.Suspended
+            ? await OrganizationService.GetCurrentSuspensionAsync(id)
+            : null;
+        await LoadStateAssignmentDetailsAsync(id, organization.Level);
         ClearStatus();
+    }
+
+    private async Task LoadStateAssignmentDetailsAsync(Guid id, OrganizationLevel level)
+    {
+        selectedStateChapterId = null;
+        stateChapterOptions = [];
+        stateAssignments = [];
+        if (level != OrganizationLevel.State)
+        {
+            return;
+        }
+
+        stateChapterOptions = await OrganizationService.GetLocalChapterOptionsAsync(id);
+        stateAssignments = await OrganizationService.GetStateChapterAssignmentsAsync(id);
+        selectedStateChapterId = stateAssignments.FirstOrDefault(assignment => assignment.EndsOn is null)?.LocalChapterOrganizationUnitId;
     }
 
     private void AddNational()
@@ -303,10 +449,10 @@
             Level = OrganizationLevel.National,
             Name = "National",
             Abbreviation = "NAT",
-            IsActive = true
+            Status = OrganizationStatus.Operating
         };
         editorTitle = "Add National";
-        canDelete = false;
+        currentSuspension = null;
         ClearStatus();
     }
 
@@ -318,10 +464,10 @@
         {
             Level = OrganizationLevel.State,
             ParentOrganizationUnitId = national?.Id,
-            IsActive = true
+            Status = OrganizationStatus.Operating
         };
         editorTitle = "Add State";
-        canDelete = false;
+        currentSuspension = null;
         ClearStatus();
     }
 
@@ -339,19 +485,19 @@
             Level = OrganizationLevel.LocalChapter,
             ParentOrganizationUnitId = SelectedItem.Id,
             StateCode = SelectedItem.StateCode,
-            IsActive = true
+            Status = OrganizationStatus.Operating
         };
         editorTitle = $"Add Chapter under {SelectedItem.Abbreviation}";
-        canDelete = false;
+        currentSuspension = null;
         ClearStatus();
     }
 
     private async Task SaveAsync()
     {
-        var userId = await GetCurrentUserIdAsync();
+        var actor = await GetCurrentActorAsync();
         var result = editModel.Id is Guid id
-            ? await OrganizationService.UpdateAsync(id, editModel, userId)
-            : await OrganizationService.CreateAsync(editModel, userId);
+            ? await OrganizationService.UpdateAsync(id, editModel, actor)
+            : await OrganizationService.CreateAsync(editModel, actor);
 
         if (!result.Succeeded)
         {
@@ -367,33 +513,64 @@
         ShowSuccess("Organization saved.");
     }
 
-    private async Task ToggleActiveAsync()
+    private async Task CloseAsync()
     {
         if (editModel.Id is not Guid id)
         {
             return;
         }
 
-        var result = await OrganizationService.SetActiveAsync(id, !editModel.IsActive, await GetCurrentUserIdAsync());
-        if (!result.Succeeded)
-        {
-            ShowError(string.Join(" ", result.Errors));
-            return;
-        }
-
-        await LoadAsync();
-        await SelectOrganization(id);
-        ShowSuccess(editModel.IsActive ? "Organization reactivated." : "Organization deactivated.");
+        var result = await OrganizationService.CloseAsync(id, await GetCurrentActorAsync());
+        await HandleStatusResultAsync(result, "Organization closed.");
     }
 
-    private async Task DeleteAsync()
+    private async Task ReopenAsync()
     {
         if (editModel.Id is not Guid id)
         {
             return;
         }
 
-        var result = await OrganizationService.DeleteAsync(id, await GetCurrentUserIdAsync());
+        var result = await OrganizationService.ReopenAsync(id, await GetCurrentActorAsync());
+        await HandleStatusResultAsync(result, "Organization reopened.");
+    }
+
+    private async Task SuspendAsync()
+    {
+        if (editModel.Id is not Guid id)
+        {
+            return;
+        }
+
+        var result = await OrganizationService.SuspendAsync(id, suspensionStart, suspensionEnd, suspensionNotes, await GetCurrentActorAsync());
+        await HandleStatusResultAsync(result, "Chapter suspended.");
+    }
+
+    private async Task EndSuspensionAsync()
+    {
+        if (editModel.Id is not Guid id)
+        {
+            return;
+        }
+
+        var result = await OrganizationService.EndSuspensionAsync(id, DateOnly.FromDateTime(DateTime.Today), await GetCurrentActorAsync());
+        await HandleStatusResultAsync(result, "Suspension ended.");
+    }
+
+    private async Task AssignStateChapterAsync()
+    {
+        if (editModel.Id is not Guid stateId || selectedStateChapterId is not Guid chapterId)
+        {
+            ShowError("Select a local chapter before assigning the acting State chapter.");
+            return;
+        }
+
+        var result = await OrganizationService.AssignStateChapterAsync(stateId, chapterId, stateChapterStart, stateChapterNotes, await GetCurrentActorAsync());
+        await HandleStatusResultAsync(result, "Acting State chapter updated.");
+    }
+
+    private async Task HandleStatusResultAsync(OrganizationSaveResult result, string successMessage)
+    {
         if (!result.Succeeded)
         {
             ShowError(string.Join(" ", result.Errors));
@@ -401,18 +578,17 @@
         }
 
         await LoadAsync();
-        var first = hierarchy.FirstOrDefault();
-        if (first is not null)
+        if (result.OrganizationId is Guid id)
         {
-            await SelectOrganization(first.Id);
+            if (!includeUnavailable)
+            {
+                includeUnavailable = true;
+                await LoadAsync();
+            }
+
+            await SelectOrganization(id);
         }
-        else
-        {
-            editModel = new();
-            selectedOrganizationId = null;
-            editorTitle = "Select or add an organization";
-        }
-        ShowSuccess("Organization deleted.");
+        ShowSuccess(successMessage);
     }
 
     private async Task CancelEdit()
@@ -444,10 +620,13 @@
         };
     }
 
-    private async Task<string?> GetCurrentUserIdAsync()
+    private async Task<OrganizationActor> GetCurrentActorAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        return state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = state.User;
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var actorName = user.Identity?.Name ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown User";
+        return new OrganizationActor(userId, actorName, "User");
     }
 
     private static OrganizationTreeItem? FindItem(IEnumerable<OrganizationTreeItem> items, Guid? id)
@@ -472,6 +651,22 @@
         }
 
         return null;
+    }
+
+    private static string DisplayLevel(OrganizationLevel level)
+    {
+        return level == OrganizationLevel.LocalChapter ? "Local Chapter" : level.ToString();
+    }
+
+    private static string StatusBadgeClass(OrganizationStatus status)
+    {
+        return status switch
+        {
+            OrganizationStatus.Operating => "text-bg-success",
+            OrganizationStatus.Suspended => "text-bg-warning",
+            OrganizationStatus.Closed => "text-bg-secondary",
+            _ => "text-bg-light"
+        };
     }
 
     private void ShowSuccess(string message)

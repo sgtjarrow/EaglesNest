@@ -19,14 +19,13 @@ public class OrganizationEditModel
 
     public Guid? ParentOrganizationUnitId { get; set; }
 
+    public OrganizationStatus Status { get; set; } = OrganizationStatus.Operating;
+
     [StringLength(100)]
     public string? City { get; set; }
 
     [StringLength(10)]
     public string? StateCode { get; set; }
 
-    [StringLength(50)]
-    public string? CharterNumber { get; set; }
-
-    public bool IsActive { get; set; } = true;
+    public DateOnly? CharterDate { get; set; }
 }

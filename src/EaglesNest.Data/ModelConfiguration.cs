@@ -11,13 +11,38 @@ public static class ModelConfiguration
         {
             entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
             entity.Property(e => e.Abbreviation).HasMaxLength(25).IsRequired();
-            entity.Property(e => e.CharterNumber).HasMaxLength(50);
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.StateCode).HasMaxLength(10);
             entity.HasIndex(e => e.Abbreviation).IsUnique();
             entity.HasOne(e => e.ParentOrganizationUnit)
                 .WithMany(e => e.Children)
                 .HasForeignKey(e => e.ParentOrganizationUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ChapterSuspension>(entity =>
+        {
+            entity.Property(e => e.ActorName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorSource).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.CreatedByUserId).HasMaxLength(450);
+            entity.HasOne(e => e.OrganizationUnit)
+                .WithMany()
+                .HasForeignKey(e => e.OrganizationUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<StateChapterAssignment>(entity =>
+        {
+            entity.Property(e => e.ActorName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorSource).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.CreatedByUserId).HasMaxLength(450);
+            entity.HasOne(e => e.StateOrganizationUnit)
+                .WithMany()
+                .HasForeignKey(e => e.StateOrganizationUnitId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(e => e.LocalChapterOrganizationUnit)
+                .WithMany()
+                .HasForeignKey(e => e.LocalChapterOrganizationUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -102,6 +127,8 @@ public static class ModelConfiguration
         modelBuilder.Entity<AuditLog>(entity =>
         {
             entity.Property(e => e.ApplicationUserId).HasMaxLength(450);
+            entity.Property(e => e.ActorName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorSource).HasMaxLength(100).IsRequired();
             entity.Property(e => e.EntityName).HasMaxLength(200).IsRequired();
             entity.Property(e => e.EntityId).HasMaxLength(100);
             entity.HasOne(e => e.OrganizationUnit)

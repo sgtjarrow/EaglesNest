@@ -9,10 +9,40 @@ public class OrganizationUnit
     public OrganizationLevel Level { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Abbreviation { get; set; } = string.Empty;
-    public string? CharterNumber { get; set; }
+    public DateOnly? CharterDate { get; set; }
     public string? City { get; set; }
     public string? StateCode { get; set; }
-    public bool IsActive { get; set; } = true;
+    public OrganizationStatus Status { get; set; } = OrganizationStatus.Operating;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public class ChapterSuspension
+{
+    public Guid Id { get; set; }
+    public Guid OrganizationUnitId { get; set; }
+    public OrganizationUnit OrganizationUnit { get; set; } = null!;
+    public DateOnly StartsOn { get; set; }
+    public DateOnly? EndsOn { get; set; }
+    public string? Notes { get; set; }
+    public string? CreatedByUserId { get; set; }
+    public string ActorName { get; set; } = string.Empty;
+    public string ActorSource { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public class StateChapterAssignment
+{
+    public Guid Id { get; set; }
+    public Guid StateOrganizationUnitId { get; set; }
+    public OrganizationUnit StateOrganizationUnit { get; set; } = null!;
+    public Guid LocalChapterOrganizationUnitId { get; set; }
+    public OrganizationUnit LocalChapterOrganizationUnit { get; set; } = null!;
+    public DateOnly StartsOn { get; set; }
+    public DateOnly? EndsOn { get; set; }
+    public string? Notes { get; set; }
+    public string? CreatedByUserId { get; set; }
+    public string ActorName { get; set; } = string.Empty;
+    public string ActorSource { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -148,6 +178,8 @@ public class AuditLog
 {
     public long Id { get; set; }
     public string? ApplicationUserId { get; set; }
+    public string ActorName { get; set; } = string.Empty;
+    public string ActorSource { get; set; } = string.Empty;
     public Guid? OrganizationUnitId { get; set; }
     public OrganizationUnit? OrganizationUnit { get; set; }
     public AuditAction Action { get; set; }

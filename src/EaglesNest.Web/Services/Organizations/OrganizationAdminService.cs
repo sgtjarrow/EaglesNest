@@ -7,10 +7,11 @@ namespace EaglesNest.Web.Services.Organizations;
 
 public class OrganizationAdminService(ApplicationDbContext dbContext)
 {
-    public async Task<IReadOnlyList<OrganizationTreeItem>> GetHierarchyAsync()
+    public async Task<IReadOnlyList<OrganizationTreeItem>> GetHierarchyAsync(bool includeUnavailable = false)
     {
         var organizations = await dbContext.OrganizationUnits
             .AsNoTracking()
+            .Where(unit => includeUnavailable || unit.Status == OrganizationStatus.Operating)
             .OrderBy(unit => unit.Level)
             .ThenBy(unit => unit.Abbreviation)
             .Select(unit => new OrganizationTreeItem
@@ -22,9 +23,31 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
                 Abbreviation = unit.Abbreviation,
                 City = unit.City,
                 StateCode = unit.StateCode,
-                IsActive = unit.IsActive
+                Status = unit.Status
             })
             .ToListAsync();
+
+        var currentAssignments = await dbContext.StateChapterAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.EndsOn == null)
+            .Select(assignment => new
+            {
+                assignment.StateOrganizationUnitId,
+                assignment.LocalChapterOrganizationUnitId,
+                assignment.LocalChapterOrganizationUnit.Abbreviation,
+                assignment.LocalChapterOrganizationUnit.Name
+            })
+            .ToDictionaryAsync(assignment => assignment.StateOrganizationUnitId);
+
+        foreach (var organization in organizations.Where(item => item.Level == OrganizationLevel.State))
+        {
+            if (currentAssignments.TryGetValue(organization.Id, out var assignment))
+            {
+                organization.ActingStateChapterId = assignment.LocalChapterOrganizationUnitId;
+                organization.ActingStateChapterAbbreviation = assignment.Abbreviation;
+                organization.ActingStateChapterName = assignment.Name;
+            }
+        }
 
         var byParent = organizations
             .Where(unit => unit.ParentOrganizationUnitId is not null)
@@ -50,7 +73,7 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
     {
         return await dbContext.OrganizationUnits
             .AsNoTracking()
-            .Where(unit => unit.Level != OrganizationLevel.LocalChapter && unit.IsActive)
+            .Where(unit => unit.Level != OrganizationLevel.LocalChapter && unit.Status == OrganizationStatus.Operating)
             .OrderBy(unit => unit.Level)
             .ThenBy(unit => unit.Abbreviation)
             .Select(unit => new OrganizationTreeItem
@@ -60,9 +83,61 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
                 Level = unit.Level,
                 Name = unit.Name,
                 Abbreviation = unit.Abbreviation,
-                IsActive = unit.IsActive
+                Status = unit.Status
             })
             .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<OrganizationTreeItem>> GetLocalChapterOptionsAsync(Guid stateOrganizationUnitId)
+    {
+        return await dbContext.OrganizationUnits
+            .AsNoTracking()
+            .Where(unit => unit.ParentOrganizationUnitId == stateOrganizationUnitId &&
+                           unit.Level == OrganizationLevel.LocalChapter &&
+                           unit.Status == OrganizationStatus.Operating)
+            .OrderBy(unit => unit.Abbreviation)
+            .Select(unit => new OrganizationTreeItem
+            {
+                Id = unit.Id,
+                ParentOrganizationUnitId = unit.ParentOrganizationUnitId,
+                Level = unit.Level,
+                Name = unit.Name,
+                Abbreviation = unit.Abbreviation,
+                Status = unit.Status
+            })
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<StateChapterAssignmentModel>> GetStateChapterAssignmentsAsync(Guid stateOrganizationUnitId)
+    {
+        return await dbContext.StateChapterAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.StateOrganizationUnitId == stateOrganizationUnitId)
+            .OrderByDescending(assignment => assignment.StartsOn)
+            .Select(assignment => new StateChapterAssignmentModel
+            {
+                Id = assignment.Id,
+                StateOrganizationUnitId = assignment.StateOrganizationUnitId,
+                LocalChapterOrganizationUnitId = assignment.LocalChapterOrganizationUnitId,
+                LocalChapterName = assignment.LocalChapterOrganizationUnit.Name,
+                LocalChapterAbbreviation = assignment.LocalChapterOrganizationUnit.Abbreviation,
+                StartsOn = assignment.StartsOn,
+                EndsOn = assignment.EndsOn,
+                Notes = assignment.Notes
+            })
+            .ToListAsync();
+    }
+
+    public async Task<ChapterSuspension?> GetCurrentSuspensionAsync(Guid organizationUnitId)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        return await dbContext.ChapterSuspensions
+            .AsNoTracking()
+            .Where(suspension => suspension.OrganizationUnitId == organizationUnitId &&
+                                 (suspension.EndsOn == null || suspension.EndsOn >= today))
+            .OrderByDescending(suspension => suspension.StartsOn)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<OrganizationEditModel?> GetOrganizationAsync(Guid id)
@@ -77,17 +152,19 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
                 Abbreviation = unit.Abbreviation,
                 Level = unit.Level,
                 ParentOrganizationUnitId = unit.ParentOrganizationUnitId,
+                Status = unit.Status,
                 City = unit.City,
                 StateCode = unit.StateCode,
-                CharterNumber = unit.CharterNumber,
-                IsActive = unit.IsActive
+                CharterDate = unit.CharterDate
             })
             .SingleOrDefaultAsync();
     }
 
-    public async Task<OrganizationSaveResult> CreateAsync(OrganizationEditModel input, string? userId)
+    public async Task<OrganizationSaveResult> CreateAsync(OrganizationEditModel input, OrganizationActor actor)
     {
         Normalize(input);
+        input.Status = OrganizationStatus.Operating;
+
         var validation = await ValidateAsync(input, null);
         if (validation.Count > 0)
         {
@@ -101,19 +178,19 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
             Abbreviation = input.Abbreviation,
             Level = input.Level,
             ParentOrganizationUnitId = input.ParentOrganizationUnitId,
+            Status = OrganizationStatus.Operating,
             City = input.City,
             StateCode = input.StateCode,
-            CharterNumber = input.CharterNumber,
-            IsActive = input.IsActive
+            CharterDate = input.CharterDate
         };
 
         dbContext.OrganizationUnits.Add(organization);
-        AddAudit(AuditAction.Created, organization, userId, input);
+        AddAudit(AuditAction.Created, organization, actor, input);
         await dbContext.SaveChangesAsync();
         return OrganizationSaveResult.Success(organization.Id);
     }
 
-    public async Task<OrganizationSaveResult> UpdateAsync(Guid id, OrganizationEditModel input, string? userId)
+    public async Task<OrganizationSaveResult> UpdateAsync(Guid id, OrganizationEditModel input, OrganizationActor actor)
     {
         Normalize(input);
         var organization = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == id);
@@ -122,6 +199,7 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
             return OrganizationSaveResult.Failure("Organization was not found.");
         }
 
+        input.Status = organization.Status;
         var validation = await ValidateAsync(input, id);
         if (validation.Count > 0)
         {
@@ -134,15 +212,14 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         organization.ParentOrganizationUnitId = input.ParentOrganizationUnitId;
         organization.City = input.City;
         organization.StateCode = input.StateCode;
-        organization.CharterNumber = input.CharterNumber;
-        organization.IsActive = input.IsActive;
+        organization.CharterDate = input.CharterDate;
 
-        AddAudit(AuditAction.Updated, organization, userId, input);
+        AddAudit(AuditAction.Updated, organization, actor, input);
         await dbContext.SaveChangesAsync();
         return OrganizationSaveResult.Success(organization.Id);
     }
 
-    public async Task<OrganizationSaveResult> SetActiveAsync(Guid id, bool isActive, string? userId)
+    public async Task<OrganizationSaveResult> CloseAsync(Guid id, OrganizationActor actor)
     {
         var organization = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == id);
         if (organization is null)
@@ -150,35 +227,18 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
             return OrganizationSaveResult.Failure("Organization was not found.");
         }
 
-        if (!isActive && organization.Level == OrganizationLevel.National)
+        if (organization.Level == OrganizationLevel.National)
         {
-            return OrganizationSaveResult.Failure("National cannot be deactivated.");
+            return OrganizationSaveResult.Failure("National cannot be closed.");
         }
 
-        organization.IsActive = isActive;
-        AddAudit(AuditAction.Updated, organization, userId, new { organization.Id, IsActive = isActive });
+        organization.Status = OrganizationStatus.Closed;
+        AddAudit(AuditAction.Closed, organization, actor, new { organization.Id, organization.Status });
         await dbContext.SaveChangesAsync();
         return OrganizationSaveResult.Success(organization.Id);
     }
 
-    public async Task<bool> CanDeleteAsync(Guid id)
-    {
-        var organization = await dbContext.OrganizationUnits.AsNoTracking().SingleOrDefaultAsync(unit => unit.Id == id);
-        if (organization is null || organization.Level == OrganizationLevel.National)
-        {
-            return false;
-        }
-
-        return !await dbContext.OrganizationUnits.AnyAsync(unit => unit.ParentOrganizationUnitId == id)
-            && !await dbContext.Members.AnyAsync(member => member.PrimaryChapterId == id)
-            && !await dbContext.MemberChapterAssignments.AnyAsync(assignment => assignment.ChapterId == id)
-            && !await dbContext.RideEvents.AnyAsync(ride => ride.ChapterId == id)
-            && !await dbContext.FinancialAssessments.AnyAsync(assessment => assessment.ChapterId == id)
-            && !await dbContext.RoleAssignments.AnyAsync(role => role.OrganizationUnitId == id)
-            && !await dbContext.ImportBatches.AnyAsync(batch => batch.OrganizationUnitId == id);
-    }
-
-    public async Task<OrganizationSaveResult> DeleteAsync(Guid id, string? userId)
+    public async Task<OrganizationSaveResult> ReopenAsync(Guid id, OrganizationActor actor)
     {
         var organization = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == id);
         if (organization is null)
@@ -186,26 +246,133 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
             return OrganizationSaveResult.Failure("Organization was not found.");
         }
 
-        if (!await CanDeleteAsync(id))
+        organization.Status = OrganizationStatus.Operating;
+        AddAudit(AuditAction.Reopened, organization, actor, new { organization.Id, organization.Status });
+        await dbContext.SaveChangesAsync();
+        return OrganizationSaveResult.Success(organization.Id);
+    }
+
+    public async Task<OrganizationSaveResult> SuspendAsync(Guid id, DateOnly startsOn, DateOnly? endsOn, string? notes, OrganizationActor actor)
+    {
+        var organization = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == id);
+        if (organization is null)
         {
-            return OrganizationSaveResult.Failure("This organization cannot be deleted because it is protected or already has related records.");
+            return OrganizationSaveResult.Failure("Organization was not found.");
         }
 
-        var relatedAuditLogs = await dbContext.AuditLogs
-            .Where(audit => audit.OrganizationUnitId == id)
-            .ToListAsync();
-        dbContext.AuditLogs.RemoveRange(relatedAuditLogs);
-        dbContext.AuditLogs.Add(new AuditLog
+        if (organization.Level != OrganizationLevel.LocalChapter)
         {
-            ApplicationUserId = userId,
-            Action = AuditAction.Deleted,
-            EntityName = nameof(OrganizationUnit),
-            EntityId = organization.Id.ToString(),
-            DetailsJson = JsonSerializer.Serialize(new { organization.Id, organization.Name, organization.Abbreviation })
+            return OrganizationSaveResult.Failure("Only local chapters can be suspended.");
+        }
+
+        if (organization.Status == OrganizationStatus.Closed)
+        {
+            return OrganizationSaveResult.Failure("Closed chapters cannot be suspended.");
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (await dbContext.ChapterSuspensions.AnyAsync(suspension =>
+                suspension.OrganizationUnitId == id &&
+                (suspension.EndsOn == null || suspension.EndsOn >= today)))
+        {
+            return OrganizationSaveResult.Failure("This chapter already has an active suspension.");
+        }
+
+        organization.Status = OrganizationStatus.Suspended;
+        dbContext.ChapterSuspensions.Add(new ChapterSuspension
+        {
+            Id = Guid.NewGuid(),
+            OrganizationUnitId = organization.Id,
+            StartsOn = startsOn,
+            EndsOn = endsOn,
+            Notes = notes,
+            CreatedByUserId = actor.ApplicationUserId,
+            ActorName = actor.ActorName,
+            ActorSource = actor.ActorSource
         });
-        dbContext.OrganizationUnits.Remove(organization);
+
+        AddAudit(AuditAction.Suspended, organization, actor, new { organization.Id, StartsOn = startsOn, EndsOn = endsOn, Notes = notes });
         await dbContext.SaveChangesAsync();
-        return OrganizationSaveResult.Success(id);
+        return OrganizationSaveResult.Success(organization.Id);
+    }
+
+    public async Task<OrganizationSaveResult> EndSuspensionAsync(Guid id, DateOnly endsOn, OrganizationActor actor)
+    {
+        var organization = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == id);
+        if (organization is null)
+        {
+            return OrganizationSaveResult.Failure("Organization was not found.");
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var suspension = await dbContext.ChapterSuspensions
+            .Where(existing => existing.OrganizationUnitId == id &&
+                               (existing.EndsOn == null || existing.EndsOn >= today))
+            .OrderByDescending(existing => existing.StartsOn)
+            .FirstOrDefaultAsync();
+
+        if (suspension is null)
+        {
+            return OrganizationSaveResult.Failure("This chapter does not have an active suspension.");
+        }
+
+        suspension.EndsOn = endsOn;
+        organization.Status = OrganizationStatus.Operating;
+        AddAudit(AuditAction.SuspensionEnded, organization, actor, new { organization.Id, EndsOn = endsOn });
+        await dbContext.SaveChangesAsync();
+        return OrganizationSaveResult.Success(organization.Id);
+    }
+
+    public async Task<OrganizationSaveResult> AssignStateChapterAsync(
+        Guid stateOrganizationUnitId,
+        Guid localChapterOrganizationUnitId,
+        DateOnly startsOn,
+        string? notes,
+        OrganizationActor actor)
+    {
+        var state = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == stateOrganizationUnitId);
+        var chapter = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Id == localChapterOrganizationUnitId);
+        if (state is null || state.Level != OrganizationLevel.State)
+        {
+            return OrganizationSaveResult.Failure("State grouping was not found.");
+        }
+
+        if (chapter is null || chapter.Level != OrganizationLevel.LocalChapter || chapter.ParentOrganizationUnitId != state.Id)
+        {
+            return OrganizationSaveResult.Failure("Acting State chapter must be a local chapter in the selected State.");
+        }
+
+        var currentAssignments = await dbContext.StateChapterAssignments
+            .Where(assignment => assignment.StateOrganizationUnitId == state.Id && assignment.EndsOn == null)
+            .ToListAsync();
+
+        foreach (var current in currentAssignments)
+        {
+            current.EndsOn = startsOn.AddDays(-1);
+        }
+
+        dbContext.StateChapterAssignments.Add(new StateChapterAssignment
+        {
+            Id = Guid.NewGuid(),
+            StateOrganizationUnitId = state.Id,
+            LocalChapterOrganizationUnitId = chapter.Id,
+            StartsOn = startsOn,
+            Notes = notes,
+            CreatedByUserId = actor.ApplicationUserId,
+            ActorName = actor.ActorName,
+            ActorSource = actor.ActorSource
+        });
+
+        AddAudit(AuditAction.StateChapterAssigned, state, actor, new
+        {
+            StateId = state.Id,
+            LocalChapterId = chapter.Id,
+            chapter.Abbreviation,
+            StartsOn = startsOn,
+            Notes = notes
+        });
+        await dbContext.SaveChangesAsync();
+        return OrganizationSaveResult.Success(state.Id);
     }
 
     private async Task<List<string>> ValidateAsync(OrganizationEditModel input, Guid? existingId)
@@ -229,9 +396,9 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
 
         if (input.Level == OrganizationLevel.National)
         {
-            if (!input.IsActive)
+            if (input.Status != OrganizationStatus.Operating)
             {
-                errors.Add("National cannot be deactivated.");
+                errors.Add("National must remain operating.");
             }
 
             if (await dbContext.OrganizationUnits.AnyAsync(unit => unit.Level == OrganizationLevel.National && unit.Id != existingId))
@@ -286,11 +453,11 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         input.Abbreviation = input.Abbreviation.Trim().ToUpperInvariant();
         input.City = NormalizeOptional(input.City);
         input.StateCode = NormalizeOptional(input.StateCode)?.ToUpperInvariant();
-        input.CharterNumber = NormalizeOptional(input.CharterNumber);
 
         if (input.Level == OrganizationLevel.National)
         {
             input.ParentOrganizationUnitId = null;
+            input.Status = OrganizationStatus.Operating;
         }
     }
 
@@ -305,11 +472,13 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         return int.TryParse(suffix, out var number) ? number : int.MaxValue;
     }
 
-    private void AddAudit(AuditAction action, OrganizationUnit organization, string? userId, object details)
+    private void AddAudit(AuditAction action, OrganizationUnit organization, OrganizationActor actor, object details)
     {
         dbContext.AuditLogs.Add(new AuditLog
         {
-            ApplicationUserId = userId,
+            ApplicationUserId = actor.ApplicationUserId,
+            ActorName = actor.ActorName,
+            ActorSource = actor.ActorSource,
             OrganizationUnitId = organization.Id,
             Action = action,
             EntityName = nameof(OrganizationUnit),

@@ -7,6 +7,8 @@ namespace EaglesNest.Tests.Organizations;
 
 public class OrganizationAdminServiceTests
 {
+    private static readonly OrganizationActor TestActor = new("user-1", "tester@example.com", "User");
+
     [Fact]
     public async Task CreateAsync_RejectsDuplicateAbbreviation()
     {
@@ -22,7 +24,7 @@ public class OrganizationAdminServiceTests
             Abbreviation = "NAT",
             Level = OrganizationLevel.State,
             ParentOrganizationUnitId = national.Id
-        }, null);
+        }, TestActor);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains("unique", StringComparison.OrdinalIgnoreCase));
@@ -45,14 +47,32 @@ public class OrganizationAdminServiceTests
             Abbreviation = "BAD",
             Level = OrganizationLevel.State,
             ParentOrganizationUnitId = chapter.Id
-        }, null);
+        }, TestActor);
 
         Assert.False(result.Succeeded);
         Assert.Contains(result.Errors, error => error.Contains("State parent", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public async Task CreateAsync_RejectsLocalChapterUnderNational()
+    public async Task GetHierarchyAsync_HidesClosedAndSuspendedByDefault()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        AddOrganization(dbContext, "Georgia", "GA", OrganizationLevel.State, national.Id, OrganizationStatus.Closed);
+        AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id, OrganizationStatus.Operating);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+
+        var defaultHierarchy = await service.GetHierarchyAsync();
+        var fullHierarchy = await service.GetHierarchyAsync(includeUnavailable: true);
+
+        Assert.DoesNotContain(defaultHierarchy.Single().Children, child => child.Abbreviation == "GA");
+        Assert.Contains(fullHierarchy.Single().Children, child => child.Abbreviation == "GA");
+    }
+
+    [Fact]
+    public async Task CloseAsync_RejectsNational()
     {
         await using var dbContext = CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
@@ -60,35 +80,14 @@ public class OrganizationAdminServiceTests
 
         var service = new OrganizationAdminService(dbContext);
 
-        var result = await service.CreateAsync(new OrganizationEditModel
-        {
-            Name = "Atlanta",
-            Abbreviation = "GA-1",
-            Level = OrganizationLevel.LocalChapter,
-            ParentOrganizationUnitId = national.Id
-        }, null);
+        var result = await service.CloseAsync(national.Id, TestActor);
 
         Assert.False(result.Succeeded);
-        Assert.Contains(result.Errors, error => error.Contains("Local chapter parent", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == national.Id)).Status);
     }
 
     [Fact]
-    public async Task SetActiveAsync_RejectsNationalDeactivation()
-    {
-        await using var dbContext = CreateDbContext();
-        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
-        await dbContext.SaveChangesAsync();
-
-        var service = new OrganizationAdminService(dbContext);
-
-        var result = await service.SetActiveAsync(national.Id, false, null);
-
-        Assert.False(result.Succeeded);
-        Assert.True((await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == national.Id)).IsActive);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_CanUpdateChapterLocation()
+    public async Task CloseAndReopenAsync_UpdatesChapterStatus()
     {
         await using var dbContext = CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
@@ -97,6 +96,106 @@ public class OrganizationAdminServiceTests
         await dbContext.SaveChangesAsync();
 
         var service = new OrganizationAdminService(dbContext);
+
+        Assert.True((await service.CloseAsync(chapter.Id, TestActor)).Succeeded);
+        Assert.Equal(OrganizationStatus.Closed, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+
+        Assert.True((await service.ReopenAsync(chapter.Id, TestActor)).Succeeded);
+        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+    }
+
+    [Fact]
+    public async Task SuspendAndEndSuspensionAsync_TracksSuspensionHistory()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+        var startsOn = new DateOnly(2026, 5, 31);
+        var endsOn = new DateOnly(2026, 6, 30);
+
+        Assert.True((await service.SuspendAsync(chapter.Id, startsOn, null, "Test suspension", TestActor)).Succeeded);
+        Assert.Equal(OrganizationStatus.Suspended, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+
+        Assert.True((await service.EndSuspensionAsync(chapter.Id, endsOn, TestActor)).Succeeded);
+        var suspension = await dbContext.ChapterSuspensions.SingleAsync();
+        Assert.Equal(endsOn, suspension.EndsOn);
+        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+    }
+
+    [Fact]
+    public async Task SuspendAsync_WithPlannedEndDate_RemainsCurrentSuspension()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+        var startsOn = DateOnly.FromDateTime(DateTime.UtcNow);
+        var plannedEndsOn = startsOn.AddDays(30);
+
+        Assert.True((await service.SuspendAsync(chapter.Id, startsOn, plannedEndsOn, "Thirty days", TestActor)).Succeeded);
+
+        var currentSuspension = await service.GetCurrentSuspensionAsync(chapter.Id);
+        Assert.NotNull(currentSuspension);
+        Assert.Equal(plannedEndsOn, currentSuspension.EndsOn);
+    }
+
+    [Fact]
+    public async Task AssignStateChapterAsync_EndsPreviousCurrentAssignment()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        var firstChapter = AddOrganization(dbContext, "The Originals", "FLA-1", OrganizationLevel.LocalChapter, state.Id);
+        var secondChapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+
+        Assert.True((await service.AssignStateChapterAsync(state.Id, firstChapter.Id, new DateOnly(2026, 1, 1), null, TestActor)).Succeeded);
+        Assert.True((await service.AssignStateChapterAsync(state.Id, secondChapter.Id, new DateOnly(2026, 5, 31), null, TestActor)).Succeeded);
+
+        var assignments = await dbContext.StateChapterAssignments.OrderBy(assignment => assignment.StartsOn).ToListAsync();
+        Assert.Equal(new DateOnly(2026, 5, 30), assignments[0].EndsOn);
+        Assert.Null(assignments[1].EndsOn);
+        Assert.Equal(secondChapter.Id, assignments[1].LocalChapterOrganizationUnitId);
+    }
+
+    [Fact]
+    public async Task AuditEntries_IncludeActorInformation()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+
+        await service.CloseAsync(state.Id, TestActor);
+
+        var audit = await dbContext.AuditLogs.SingleAsync();
+        Assert.Equal("user-1", audit.ApplicationUserId);
+        Assert.Equal("tester@example.com", audit.ActorName);
+        Assert.Equal("User", audit.ActorSource);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_CanUpdateChapterLocationAndCharterDate()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+        var charterDate = new DateOnly(2020, 1, 2);
 
         var result = await service.UpdateAsync(chapter.Id, new OrganizationEditModel
         {
@@ -107,13 +206,14 @@ public class OrganizationAdminServiceTests
             ParentOrganizationUnitId = state.Id,
             City = "Pinellas Park",
             StateCode = "FL",
-            IsActive = true
-        }, null);
+            CharterDate = charterDate
+        }, TestActor);
 
         Assert.True(result.Succeeded);
         var updated = await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id);
         Assert.Equal("Pinellas Park", updated.City);
         Assert.Equal("FL", updated.StateCode);
+        Assert.Equal(charterDate, updated.CharterDate);
     }
 
     private static ApplicationDbContext CreateDbContext()
@@ -130,7 +230,8 @@ public class OrganizationAdminServiceTests
         string name,
         string abbreviation,
         OrganizationLevel level,
-        Guid? parentId)
+        Guid? parentId,
+        OrganizationStatus status = OrganizationStatus.Operating)
     {
         var organization = new OrganizationUnit
         {
@@ -139,7 +240,7 @@ public class OrganizationAdminServiceTests
             Abbreviation = abbreviation,
             Level = level,
             ParentOrganizationUnitId = parentId,
-            IsActive = true
+            Status = status
         };
 
         dbContext.OrganizationUnits.Add(organization);

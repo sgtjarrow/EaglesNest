@@ -11,6 +11,9 @@ public class OrganizationTreeItem
     public string Abbreviation { get; set; } = string.Empty;
     public string? City { get; set; }
     public string? StateCode { get; set; }
-    public bool IsActive { get; set; }
+    public OrganizationStatus Status { get; set; }
+    public Guid? ActingStateChapterId { get; set; }
+    public string? ActingStateChapterAbbreviation { get; set; }
+    public string? ActingStateChapterName { get; set; }
     public List<OrganizationTreeItem> Children { get; set; } = [];
 }

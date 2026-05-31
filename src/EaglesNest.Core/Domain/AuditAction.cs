@@ -9,5 +9,10 @@ public enum AuditAction
     Rejected = 5,
     LoginDisabled = 6,
     LoginEnabled = 7,
-    Imported = 8
+    Imported = 8,
+    Closed = 9,
+    Reopened = 10,
+    Suspended = 11,
+    SuspensionEnded = 12,
+    StateChapterAssigned = 13
 }

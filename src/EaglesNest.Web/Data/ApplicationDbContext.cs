@@ -8,6 +8,8 @@ namespace EaglesNest.Web.Data;
 public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : IdentityDbContext<ApplicationUser>(options)
 {
     public DbSet<OrganizationUnit> OrganizationUnits => Set<OrganizationUnit>();
+    public DbSet<ChapterSuspension> ChapterSuspensions => Set<ChapterSuspension>();
+    public DbSet<StateChapterAssignment> StateChapterAssignments => Set<StateChapterAssignment>();
     public DbSet<Member> Members => Set<Member>();
     public DbSet<MemberChapterAssignment> MemberChapterAssignments => Set<MemberChapterAssignment>();
     public DbSet<MilitaryServiceRecord> MilitaryServiceRecords => Set<MilitaryServiceRecord>();
