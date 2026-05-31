@@ -27,5 +27,20 @@ public class OrganizationEditModel
     [StringLength(10)]
     public string? StateCode { get; set; }
 
+    [StringLength(200)]
+    public string? MailingAddressLine1 { get; set; }
+
+    [StringLength(200)]
+    public string? MailingAddressLine2 { get; set; }
+
+    [StringLength(100)]
+    public string? MailingCity { get; set; }
+
+    [StringLength(10)]
+    public string? MailingStateCode { get; set; }
+
+    [StringLength(20)]
+    public string? MailingPostalCode { get; set; }
+
     public DateOnly? CharterDate { get; set; }
 }

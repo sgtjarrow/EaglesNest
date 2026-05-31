@@ -11,6 +11,8 @@ public class OrganizationTreeItem
     public string Abbreviation { get; set; } = string.Empty;
     public string? City { get; set; }
     public string? StateCode { get; set; }
+    public string? MailingCity { get; set; }
+    public string? MailingStateCode { get; set; }
     public OrganizationStatus Status { get; set; }
     public Guid? ActingStateChapterId { get; set; }
     public string? ActingStateChapterAbbreviation { get; set; }

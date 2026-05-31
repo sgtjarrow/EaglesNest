@@ -1,5 +1,7 @@
 using EaglesNest.Core.Domain;
+using EaglesNest.Web.Services.Organizations;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace EaglesNest.Web.Data.Seed;
 
@@ -204,7 +206,7 @@ public static class OrganizationSeeder
         new("IL", "IL-1", "IL", "Fithian", "IL"),
         new("NM", "NM-1", "NM", "McIntosh", "NM"),
         new("MN", "MN-1", "MN", "Alexandria", "MN"),
-        new("Eternal Chapter", "US-100", "NAT", null, "US")
+        new("Eternal Chapter", "Chapter-100", "NAT", null, null)
     ];
 
     private static readonly StateChapterSeed[] StateChapterAssignments =
@@ -245,9 +247,162 @@ public static class OrganizationSeeder
         new("MN", "MN-1")
     ];
 
+    private static readonly AddressSeed[] MailingAddresses =
+    [
+        new("AL-2", @"1012 County Road 40 W", @"Prattville", @"AL", @"36067"),
+        new("AL-3", @"20977 Edwards Rd.", @"Andalusia", @"AL", @"36421"),
+        new("AL-4", @"18615 Jefferson St.", @"Athens", @"AL", @"35611"),
+        new("AZ-1", @"22738 S 228th Pl", @"Queen Creek", @"AZ", @"85142"),
+        new("AZ-2", @"996 Storm Cloud Dr.", @"Kingman", @"AZ", @"86409"),
+        new("AZ-3", @"11918 W Corrine Dr.", @"El Mirage", @"AZ", @"85335"),
+        new("CT-1", @"114 West St.", @"Vernon", @"CT", @"6066"),
+        new("Chapter-100", null, null, null, null),
+        new("DE-1", @"13 Marlin Court", @"New Castle", @"DE", @"19720"),
+        new("DE-2", @"5 East St.", @"Camden", @"DE", @"19934"),
+        new("FLA-1", @"12072 NW 27th Dr", @"Coral Springs", @"FL", @"33065"),
+        new("FLA-10", @"36136 Emeralda Ave", @"Leesburg", @"FL", @"34788"),
+        new("FLA-11", @"95 N Olivia Dr Avon Park Fl 33825", null, null, null),
+        new("FLA-13", @"7489 Tourmaline Dr.", @"Grant", @"FL", @"32949"),
+        new("FLA-14", @"PO Box 148", @"Ocklawaha", @"FL", @"32183"),
+        new("FLA-15", @"5601 Highway 393", @"Crestview", @"FL", @"32539"),
+        new("FLA-16", @"PO Box 1514", @"Stuart", @"FL", @"34995"),
+        new("FLA-17", @"4650 SW 107th Ln", @"Lake Butler", @"FL", @"32054"),
+        new("FLA-18", @"18427 Success Rd", @"Brooksville", @"FL", @"34604"),
+        new("FLA-2", @"19065 NW 85th Ave.", @"Hialeah", @"FL", @"33015-5375"),
+        new("FLA-20", @"4780 La Casa Cir", @"Pace", @"FL", @"32571"),
+        new("FLA-4", @"3475 Douglas St.", @"Fort Pierce", @"FL", @"34981"),
+        new("FLA-6", @"358 8th St.", @"Holly Hill", @"FL", @"32117"),
+        new("FLA-7", @"P.O. Box 1281", @"Pinellas Park", @"FL", @"33780"),
+        new("FLA-8", @"PO.Box  702193", @"St. Cloud", @"FL", @"34770"),
+        new("FLA-9", @"273 Huntington Dr.", @"Deland", @"FL", @"32724"),
+        new("GA-1", @"PO Box 2343", @"Powder Springs", @"GA", @"30127"),
+        new("GA-10", @"104 Greenwood St #614", @"Milner", @"GA", @"30257"),
+        new("GA-11", @"PO Box 1314", @"Cumming", @"GA", @"30040"),
+        new("GA-12", @"2417 S Patterson St", @"Valdosta", @"GA", @"31601"),
+        new("GA-13", @"73 Ridgeway Dr.", @"Fort Valley", @"GA", @"31030"),
+        new("GA-14", @"615 Main St. Box 701", @"Warrenton", @"GA", @"30828-9998"),
+        new("GA-15", @"PO Box 453", @"Glenwood", @"GA", @"30428"),
+        new("GA-16", @"P.O. Box 5682", @"St. Mary's", @"GA", @"31558-5682"),
+        new("GA-17", @"1768 Four Notch Rd", @"Carrollton", @"GA", @"30116"),
+        new("GA-18", @"556 Ivylog Creek Rd", @"Young Harris", @"GA", @"30582"),
+        new("GA-2", @"102 n 2nd ave", @"Chatsworth", @"GA", @"30705"),
+        new("GA-3", @"201 Wyler Ave.", @"Warner Robins", @"GA", @"31093"),
+        new("GA-4", @"PO Box 3022", @"Savanna", @"GA", @"31402"),
+        new("GA-5", @"142 Cowan Dr. SW", @"Cartersville", @"GA", @"30120-5303"),
+        new("GA-6", @"PO Box 211755", @"Augusta", @"GA", @"30917"),
+        new("GA-7", @"PO Box 91", @"Surrency", @"GA", @"31563"),
+        new("GA-8", @"PO Box 702", @"Brooklet", @"GA", @"30415"),
+        new("GA-9", @"PO Box 404", @"Milledgeville", @"GA", @"31059"),
+        new("IL-1", @"6669 E. Lincoln Trail", @"Fithian", @"IL", @"61844"),
+        new("IN-10", @"PO Box 514", @"Brazil", @"IN", @"47834"),
+        new("IN-2", @"7331 W. Beyers Ct", @"New Palestine", @"IN", @"46163"),
+        new("IN-3", @"8791 S. Old Union Church Rd.", @"English", @"IN", @"47118-6028"),
+        new("IN-4", @"2920 Connett Ave.", @"Fort Wayne", @"IN", @"46802"),
+        new("IN-5", @"3186 W Nubian Rd", @"Salem", @"IN", @"47167"),
+        new("IN-7", @"8287 W Johnson School Rd.", @"Connersville", @"IN", @"47331"),
+        new("IN-8", @"221 S Beaty St.", @"Columbus", @"IN", @"47201"),
+        new("IN-9", @"228 Humphery St.", @"Logansport", @"IN", @"46947"),
+        new("KY-1", @"414 Highland Ave. PO Box 341", @"Vine Grove", @"KY", @"40175"),
+        new("LA-1", @"29070 E Ruth St", @"Lacombe", @"LA", @"70445"),
+        new("MA-1", @"30 Blakeley St.", @"Lynn", @"MA", @"1915"),
+        new("MA-2", @"12 New York Ave", @"Blackstone", @"MA", @"1504"),
+        new("MD-1", @"14616 Barkdoll Rd", @"Hagerstown", @"MD", @"21742"),
+        new("MD-2", @"11206 Hollywood rd", @"Hagerstown", @"MD", @"21740"),
+        new("MD-3", @"27520 Point Lookout Rd", @"Leanardtown", @"MD", null),
+        new("MD-4", @"1714 Morse Rd", @"Jarrettsville", @"MD", @"21084"),
+        new("MD-5", @"404 S. Kaywood Dr.", @"Salisbury", @"MD", @"21804"),
+        new("MD-6", @"11072 Powell Rd.", @"Thurmont", @"MD", @"21788"),
+        new("MD-7", @"500 Academy St.", @"Hurlock", @"MD", @"21643"),
+        new("ME-1", @"10 Old Falls Rd", @"Kennebunk", @"ME", @"4043"),
+        new("MI-1", @"3744 E. Michigan ave", @"Jackson", @"MI", @"49202"),
+        new("MI-2", @"PO Box 26", @"Maybee", @"MI", @"48159"),
+        new("MI-4", @"33300 Warren Rd #24", @"Westland", @"MI", @"48185"),
+        new("MI-5", @"5177 Durwood Dr", @"Swartz Creek", @"MI", @"48437"),
+        new("MN-1", @"PO Box 711", @"Alexandria", @"MN", @"56308"),
+        new("MO-1", @"141 Shady Path", @"Cape Girardeau", @"MO", @"63701"),
+        new("MS-1", @"PO Box 1144", @"Ocean Springs", @"MS", @"39566"),
+        new("MS-2", @"676 Old Forge Rd.", @"Southaven", @"MS", null),
+        new("NAT", @"310 E. Jefferson St.", @"Brooksville", @"FL", @"34601-2626"),
+        new("NC-1", @"PO Box 48171", @"Cumberland", @"NC", @"28331"),
+        new("NC-2", @"PO Box 33", @"Barium Springs", @"NC", @"28010"),
+        new("NC-3", @"P.O. Box 1724", @"Indian Trail", @"NC", @"28079"),
+        new("ND-1", @"PO Box 513", @"West Fargo", @"ND", @"58078"),
+        new("NH-1", @"PO Box 359", @"Center Sandwich", @"NH", @"3227"),
+        new("NH-2", @"21 Davis Blvd", @"Rochester", @"NH", @"3868"),
+        new("NJ-1", @"21 Lomurno Lane", @"Cape May Court House", @"NJ", @"8210"),
+        new("NM-1", @"7 Rio Vista Ave.", @"McIntosh", @"NM", @"87032"),
+        new("NY-1", @"16 Thornton Commons", @"Yaphank", @"NY", @"11980"),
+        new("NY-3", @"286 John Graham Rd", @"Smyrna", @"NY", @"13464"),
+        new("NY-4", @"56 Dundee Cir", @"Middletown", @"NY", @"10941"),
+        new("NY-5", @"35940 NYS Rte 26", @"Carthage", @"NY", @"13619"),
+        new("NY-6", @"290 Burnett Rd", @"Webster", @"NY", @"14580"),
+        new("NY-7", @"1351 Hwy 67", @"Johnstown", @"NY", @"12095"),
+        new("OH-2", @"PO Box 514", @"Xenia", @"OH", @"45385"),
+        new("OH-3", @"145 E. Ottawa St.", @"Oak Harbor", @"OH", @"43449"),
+        new("OH-4", @"1792 Greentree Meadows Dr", @"Lebanon", @"OH", @"45036"),
+        new("OH-6", @"29565 E. Broadway St", @"Walbridge", @"OH", @"43465"),
+        new("OH-7", @"PO Box 134", @"Van Wert", @"OH", @"45891"),
+        new("OH-8", @"135 N. Ohio ave. PO Box 715", @"Sidney", @"OH", @"45365"),
+        new("OH-9", @"P.O. Box 154", @"Milford", @"OH", @"45150"),
+        new("OK-2", @"906 SW 5th St", @"Lawton", @"OK", @"73505"),
+        new("OK-3", @"P.O. Box 41 217 W. Cypress St.", @"Altus", @"OK", @"73521"),
+        new("PA-1", @"114 Brewster Rd", @"New Castle", @"PA", @"16102"),
+        new("PA-2", @"PO Box 33", @"Rouzerville", @"PA", @"17250"),
+        new("PA-3", @"131 Riddgemont Dr", @"Industry", @"PA", @"15052"),
+        new("PA-4", @"520 Mundis Mill Rd.", @"York", @"PA", @"17406"),
+        new("PA-5", @"PO Box 132", @"Robesonia", @"PA", @"19551"),
+        new("PA-7", @"PO Box 116", @"Jonestown", @"PA", @"17038"),
+        new("PA-9", @"459 Maple", @"Blairsville", @"PA", @"15717"),
+        new("SC-1", @"1726 Jameson Rd", @"Easley", @"SC", @"29640"),
+        new("SC-2", @"108 Dusty Ct.", @"Lexington", @"SC", @"29073"),
+        new("SC-3", @"81 Kendall Dr.", @"Bluffton", @"SC", @"29910"),
+        new("SC-4", @"21 Plainfield Ave.", @"Goose Creek", null, null),
+        new("SD-1", @"P.O. Box 1921", @"Watertown", @"SD", @"57201"),
+        new("SD-2", @"118 S Main St.", @"Lennox", @"SD", @"57028"),
+        new("SD-3", @"825 14th St", @"Sturgis", @"SD", @"57785"),
+        new("TN-1", @"PO Box 681", @"Millington", @"TX", @"38083"),
+        new("TN-2", @"6971 E. Richmond Shop Rd", @"Lebanon", @"TN", @"37090"),
+        new("TN-3", @"PO Box 5703", @"Sevierville", @"TN", @"37864"),
+        new("TN-4", @"18738 TN-56", @"Beersheba Springs", @"TN", @"37305"),
+        new("TN-5", @"1477 Tiny Town Rd.", @"Clarksville", @"TN", @"37043"),
+        new("TN-6", @"4458 Hurt Rd", @"Kenton", @"TN", @"38233"),
+        new("TN-7", @"236 Jackson Ave.", @"Smyrna", @"TN", @"37167"),
+        new("TN-8", @"PO Box 175", @"Chuckey", @"TN", @"37641"),
+        new("TN-9", @"1240 Christianburg Ln.", @"Sweetwater", @"TN", @"37874"),
+        new("TX-1", @"11113 Mulholland Dr.", @"Corpus Christi", @"TX", @"78410"),
+        new("TX-2", @"615 E. Houston St #2511", @"San Antonio", @"TX", @"78205"),
+        new("TX-3", @"5212 Meadow Ln", @"Krum", @"TX", @"76249"),
+        new("TX-4", @"2302 Amethyst Dr", @"Killeen", @"TX", @"76549"),
+        new("TX-5", @"427 Brooks Dr.", @"Nevada", @"TX", @"75173"),
+        new("TX-6", @"1417 US 290 E, Lot 2", @"Elgin", @"TX", @"78361"),
+        new("TX-7", @"12935 Taper Reach Dr", @"Tombull", @"TX", @"77377"),
+        new("TX-8", @"2912 Greg St.", @"Canyon", @"TX", @"79015"),
+        new("VA-1", @"PO Box 16114", @"Newport News", @"VA", @"23608"),
+        new("VA-10", @"P.O. Box 12", @"Salem", @"VA", @"24153"),
+        new("VA-2", @"PO Box 10131", @"Danville", @"VA", @"24543"),
+        new("VA-3", @"4201 Eldorado Dr", @"Woodbridge", @"VA", @"22193"),
+        new("VA-4", @"195 Choptank Rd", @"Stafford", @"VA", @"22556"),
+        new("VA-5", @"610 Elmhurst Ave", @"Chesapeake", @"VA", @"23322"),
+        new("VA-6", @"4936 Empire Pkwy", @"Chester", @"VA", @"23831"),
+        new("VA-7", @"10561 Winged Elm Cr", @"Manassas", @"VA", @"20110"),
+        new("VA-8", @"390 Ogden Ln", @"Middletown", @"VA", @"22645"),
+        new("WA-1", @"3628 Arbors Dr. SE", @"Lacy", @"WA", @"98503"),
+        new("WI-1", @"27308 Juniper Ln", @"Eastman", @"WI", @"54626"),
+        new("WI-2", @"526 E North St", @"Poynette", @"WI", @"53944"),
+        new("WVA-1", @"PO Box 4110", @"Huntington", @"WV", @"25729-4110"),
+        new("WVA-2", @"302 General Early Dr.", @"Harpers Ferry", @"WV", @"25425"),
+        new("WVA-3", @"2281 Dunlap Ridge Rd", @"Buffalo", @"WV", @"25033"),
+        new("WVA-4", @"424 Winding Heights Rd", @"Parkersburg", @"WV", @"26101"),
+        new("WVA-5", @"389 Tomahawk Run Rd", @"Hedgesville", @"WV", @"25427")
+    ];
+
     public static async Task SeedAsync(ApplicationDbContext dbContext)
     {
-        var national = await GetOrCreateAsync(dbContext, "National", "NAT", OrganizationLevel.National, null, null, null);
+        var addresses = MailingAddresses.ToDictionary(address => address.Abbreviation);
+        await RenameLegacyEternalChapterAsync(dbContext);
+
+        var nationalAddress = addresses["NAT"];
+        var national = await GetOrCreateAsync(dbContext, "National", "NAT", OrganizationLevel.National, null, null, null, nationalAddress);
 
         var requiredStateAbbreviations = Chapters
             .Where(chapter => chapter.ParentAbbreviation != "NAT")
@@ -257,7 +412,7 @@ public static class OrganizationSeeder
 
         foreach (var state in States.Where(state => requiredStateAbbreviations.Contains(state.Abbreviation)))
         {
-            await GetOrCreateAsync(dbContext, state.Name, state.Abbreviation, OrganizationLevel.State, national.Id, null, StateCodeFromAbbreviation(state.Abbreviation));
+            await GetOrCreateAsync(dbContext, state.Name, state.Abbreviation, OrganizationLevel.State, national.Id, null, StateCodeFromAbbreviation(state.Abbreviation), null);
         }
 
         var parents = await dbContext.OrganizationUnits.ToDictionaryAsync(unit => unit.Abbreviation);
@@ -267,7 +422,8 @@ public static class OrganizationSeeder
                 ? parent.Id
                 : national.Id;
 
-            await GetOrCreateAsync(dbContext, chapter.Name, chapter.Abbreviation, OrganizationLevel.LocalChapter, parentId, chapter.City, chapter.StateCode);
+            addresses.TryGetValue(chapter.Abbreviation, out var address);
+            await GetOrCreateAsync(dbContext, chapter.Name, chapter.Abbreviation, OrganizationLevel.LocalChapter, parentId, chapter.City, chapter.StateCode, address);
         }
 
         await SoftCloseEmptyStatesAsync(dbContext, requiredStateAbbreviations);
@@ -283,18 +439,21 @@ public static class OrganizationSeeder
         OrganizationLevel level,
         Guid? parentId,
         string? city,
-        string? stateCode)
+        string? stateCode,
+        AddressSeed? mailingAddress)
     {
         var unit = await dbContext.OrganizationUnits.SingleOrDefaultAsync(existing => existing.Abbreviation == abbreviation);
         if (unit is not null)
         {
+            ApplySeedValues(unit, name, level, parentId, city, stateCode, mailingAddress);
+            await dbContext.SaveChangesAsync();
             return unit;
         }
 
         unit = new OrganizationUnit
         {
             Id = Guid.NewGuid(),
-            Name = name,
+            Name = ToTitleCase(name),
             Abbreviation = abbreviation,
             Level = level,
             ParentOrganizationUnitId = parentId,
@@ -302,10 +461,65 @@ public static class OrganizationSeeder
             StateCode = stateCode,
             Status = OrganizationStatus.Operating
         };
+        ApplySeedValues(unit, name, level, parentId, city, stateCode, mailingAddress);
 
         dbContext.OrganizationUnits.Add(unit);
         await dbContext.SaveChangesAsync();
         return unit;
+    }
+
+    private static void ApplySeedValues(
+        OrganizationUnit unit,
+        string name,
+        OrganizationLevel level,
+        Guid? parentId,
+        string? city,
+        string? stateCode,
+        AddressSeed? mailingAddress)
+    {
+        unit.Name = ToTitleCase(name);
+        unit.Level = level;
+        unit.ParentOrganizationUnitId = parentId;
+        unit.City = OrganizationAdminService.IsEternalChapter(unit.Abbreviation) || level == OrganizationLevel.National ? null : city;
+        unit.StateCode = OrganizationAdminService.IsEternalChapter(unit.Abbreviation) || level == OrganizationLevel.National ? null : stateCode;
+
+        if (OrganizationAdminService.IsEternalChapter(unit.Abbreviation))
+        {
+            unit.MailingAddressLine1 = null;
+            unit.MailingAddressLine2 = null;
+            unit.MailingCity = null;
+            unit.MailingStateCode = null;
+            unit.MailingPostalCode = null;
+            return;
+        }
+
+        if (mailingAddress is not null)
+        {
+            unit.MailingAddressLine1 = mailingAddress.AddressLine1;
+            unit.MailingAddressLine2 = null;
+            unit.MailingCity = mailingAddress.City;
+            unit.MailingStateCode = mailingAddress.StateCode;
+            unit.MailingPostalCode = mailingAddress.PostalCode;
+        }
+    }
+
+    private static async Task RenameLegacyEternalChapterAsync(ApplicationDbContext dbContext)
+    {
+        var legacy = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit => unit.Abbreviation == "US-100");
+        if (legacy is null)
+        {
+            return;
+        }
+
+        legacy.Abbreviation = "Chapter-100";
+        legacy.City = null;
+        legacy.StateCode = null;
+        legacy.MailingAddressLine1 = null;
+        legacy.MailingAddressLine2 = null;
+        legacy.MailingCity = null;
+        legacy.MailingStateCode = null;
+        legacy.MailingPostalCode = null;
+        await dbContext.SaveChangesAsync();
     }
 
     private static async Task SoftCloseEmptyStatesAsync(ApplicationDbContext dbContext, HashSet<string> requiredStateAbbreviations)
@@ -371,4 +585,11 @@ public static class OrganizationSeeder
     private sealed record ChapterSeed(string Name, string Abbreviation, string ParentAbbreviation, string? City, string? StateCode);
 
     private sealed record StateChapterSeed(string StateAbbreviation, string ChapterAbbreviation);
+
+    private sealed record AddressSeed(string Abbreviation, string? AddressLine1, string? City, string? StateCode, string? PostalCode);
+
+    private static string ToTitleCase(string value)
+    {
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.ToLowerInvariant());
+    }
 }

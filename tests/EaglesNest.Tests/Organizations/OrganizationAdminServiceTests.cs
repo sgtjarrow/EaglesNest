@@ -87,6 +87,21 @@ public class OrganizationAdminServiceTests
     }
 
     [Fact]
+    public async Task CloseAndSuspendAsync_RejectEternalChapter()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var eternal = AddOrganization(dbContext, "Eternal Chapter", "Chapter-100", OrganizationLevel.LocalChapter, national.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+
+        Assert.False((await service.CloseAsync(eternal.Id, TestActor)).Succeeded);
+        Assert.False((await service.SuspendAsync(eternal.Id, DateOnly.FromDateTime(DateTime.UtcNow), null, null, TestActor)).Succeeded);
+        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == eternal.Id)).Status);
+    }
+
+    [Fact]
     public async Task CloseAndReopenAsync_UpdatesChapterStatus()
     {
         await using var dbContext = CreateDbContext();
@@ -214,6 +229,39 @@ public class OrganizationAdminServiceTests
         Assert.Equal("Pinellas Park", updated.City);
         Assert.Equal("FL", updated.StateCode);
         Assert.Equal(charterDate, updated.CharterDate);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NormalizesNameAndMailingAddress()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Alabama", "AL", OrganizationLevel.State, national.Id);
+        var chapter = AddOrganization(dbContext, "IRREGULARS", "AL-4", OrganizationLevel.LocalChapter, state.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new OrganizationAdminService(dbContext);
+
+        var result = await service.UpdateAsync(chapter.Id, new OrganizationEditModel
+        {
+            Id = chapter.Id,
+            Name = "IRREGULARS",
+            Abbreviation = "AL-4",
+            Level = OrganizationLevel.LocalChapter,
+            ParentOrganizationUnitId = state.Id,
+            MailingAddressLine1 = "18615 Jefferson St.",
+            MailingCity = "Athens",
+            MailingStateCode = "al",
+            MailingPostalCode = "35611"
+        }, TestActor);
+
+        Assert.True(result.Succeeded);
+        var updated = await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id);
+        Assert.Equal("Irregulars", updated.Name);
+        Assert.Equal("18615 Jefferson St.", updated.MailingAddressLine1);
+        Assert.Equal("Athens", updated.MailingCity);
+        Assert.Equal("AL", updated.MailingStateCode);
+        Assert.Equal("35611", updated.MailingPostalCode);
     }
 
     private static ApplicationDbContext CreateDbContext()

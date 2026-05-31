@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 using EaglesNest.Core.Domain;
 using EaglesNest.Web.Data;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,8 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
                 Abbreviation = unit.Abbreviation,
                 City = unit.City,
                 StateCode = unit.StateCode,
+                MailingCity = unit.MailingCity,
+                MailingStateCode = unit.MailingStateCode,
                 Status = unit.Status
             })
             .ToListAsync();
@@ -52,7 +55,7 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         var byParent = organizations
             .Where(unit => unit.ParentOrganizationUnitId is not null)
             .GroupBy(unit => unit.ParentOrganizationUnitId!.Value)
-            .ToDictionary(group => group.Key, group => group.OrderBy(SortKey).ThenBy(unit => unit.Name).ToList());
+            .ToDictionary(group => group.Key, group => group.OrderBy(OrganizationSortKey).ThenBy(unit => unit.Name).ToList());
 
         foreach (var organization in organizations)
         {
@@ -64,7 +67,7 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
 
         return organizations
             .Where(unit => unit.ParentOrganizationUnitId is null)
-            .OrderBy(SortKey)
+            .OrderBy(OrganizationSortKey)
             .ThenBy(unit => unit.Name)
             .ToList();
     }
@@ -155,6 +158,11 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
                 Status = unit.Status,
                 City = unit.City,
                 StateCode = unit.StateCode,
+                MailingAddressLine1 = unit.MailingAddressLine1,
+                MailingAddressLine2 = unit.MailingAddressLine2,
+                MailingCity = unit.MailingCity,
+                MailingStateCode = unit.MailingStateCode,
+                MailingPostalCode = unit.MailingPostalCode,
                 CharterDate = unit.CharterDate
             })
             .SingleOrDefaultAsync();
@@ -181,6 +189,11 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
             Status = OrganizationStatus.Operating,
             City = input.City,
             StateCode = input.StateCode,
+            MailingAddressLine1 = input.MailingAddressLine1,
+            MailingAddressLine2 = input.MailingAddressLine2,
+            MailingCity = input.MailingCity,
+            MailingStateCode = input.MailingStateCode,
+            MailingPostalCode = input.MailingPostalCode,
             CharterDate = input.CharterDate
         };
 
@@ -212,6 +225,11 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         organization.ParentOrganizationUnitId = input.ParentOrganizationUnitId;
         organization.City = input.City;
         organization.StateCode = input.StateCode;
+        organization.MailingAddressLine1 = input.MailingAddressLine1;
+        organization.MailingAddressLine2 = input.MailingAddressLine2;
+        organization.MailingCity = input.MailingCity;
+        organization.MailingStateCode = input.MailingStateCode;
+        organization.MailingPostalCode = input.MailingPostalCode;
         organization.CharterDate = input.CharterDate;
 
         AddAudit(AuditAction.Updated, organization, actor, input);
@@ -227,9 +245,9 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
             return OrganizationSaveResult.Failure("Organization was not found.");
         }
 
-        if (organization.Level == OrganizationLevel.National)
+        if (organization.Level == OrganizationLevel.National || IsEternalChapter(organization.Abbreviation))
         {
-            return OrganizationSaveResult.Failure("National cannot be closed.");
+            return OrganizationSaveResult.Failure($"{organization.Name} cannot be closed.");
         }
 
         organization.Status = OrganizationStatus.Closed;
@@ -263,6 +281,11 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         if (organization.Level != OrganizationLevel.LocalChapter)
         {
             return OrganizationSaveResult.Failure("Only local chapters can be suspended.");
+        }
+
+        if (IsEternalChapter(organization.Abbreviation))
+        {
+            return OrganizationSaveResult.Failure("Eternal Chapter cannot be suspended.");
         }
 
         if (organization.Status == OrganizationStatus.Closed)
@@ -433,7 +456,9 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
                 {
                     errors.Add("State parent must be National.");
                 }
-                else if (input.Level == OrganizationLevel.LocalChapter && parent.Level != OrganizationLevel.State)
+                else if (input.Level == OrganizationLevel.LocalChapter &&
+                         parent.Level != OrganizationLevel.State &&
+                         !(IsEternalChapter(input.Abbreviation) && parent.Level == OrganizationLevel.National))
                 {
                     errors.Add("Local chapter parent must be a State.");
                 }
@@ -449,15 +474,34 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
 
     private static void Normalize(OrganizationEditModel input)
     {
-        input.Name = input.Name.Trim();
+        input.Name = ToTitleCase(input.Name.Trim());
         input.Abbreviation = input.Abbreviation.Trim().ToUpperInvariant();
         input.City = NormalizeOptional(input.City);
         input.StateCode = NormalizeOptional(input.StateCode)?.ToUpperInvariant();
+        input.MailingAddressLine1 = NormalizeOptional(input.MailingAddressLine1);
+        input.MailingAddressLine2 = NormalizeOptional(input.MailingAddressLine2);
+        input.MailingCity = NormalizeOptional(input.MailingCity);
+        input.MailingStateCode = NormalizeOptional(input.MailingStateCode)?.ToUpperInvariant();
+        input.MailingPostalCode = NormalizeOptional(input.MailingPostalCode);
+
+        if (IsEternalChapter(input.Abbreviation))
+        {
+            input.Abbreviation = "Chapter-100";
+            input.City = null;
+            input.StateCode = null;
+            input.MailingAddressLine1 = null;
+            input.MailingAddressLine2 = null;
+            input.MailingCity = null;
+            input.MailingStateCode = null;
+            input.MailingPostalCode = null;
+        }
 
         if (input.Level == OrganizationLevel.National)
         {
             input.ParentOrganizationUnitId = null;
             input.Status = OrganizationStatus.Operating;
+            input.City = null;
+            input.StateCode = null;
         }
     }
 
@@ -466,10 +510,30 @@ public class OrganizationAdminService(ApplicationDbContext dbContext)
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
-    private static int SortKey(OrganizationTreeItem item)
+    private static string ToTitleCase(string value)
     {
-        var suffix = item.Abbreviation.Split('-').LastOrDefault();
-        return int.TryParse(suffix, out var number) ? number : int.MaxValue;
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.ToLowerInvariant());
+    }
+
+    private static string OrganizationSortKey(OrganizationTreeItem item)
+    {
+        if (item.Level == OrganizationLevel.National)
+        {
+            return "0000";
+        }
+
+        if (IsEternalChapter(item.Abbreviation))
+        {
+            return "0001";
+        }
+
+        return $"1000-{item.Name}";
+    }
+
+    public static bool IsEternalChapter(string? abbreviation)
+    {
+        return string.Equals(abbreviation, "Chapter-100", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(abbreviation, "US-100", StringComparison.OrdinalIgnoreCase);
     }
 
     private void AddAudit(AuditAction action, OrganizationUnit organization, OrganizationActor actor, object details)

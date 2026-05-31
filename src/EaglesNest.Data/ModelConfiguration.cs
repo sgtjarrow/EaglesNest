@@ -13,6 +13,11 @@ public static class ModelConfiguration
             entity.Property(e => e.Abbreviation).HasMaxLength(25).IsRequired();
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.StateCode).HasMaxLength(10);
+            entity.Property(e => e.MailingAddressLine1).HasMaxLength(200);
+            entity.Property(e => e.MailingAddressLine2).HasMaxLength(200);
+            entity.Property(e => e.MailingCity).HasMaxLength(100);
+            entity.Property(e => e.MailingStateCode).HasMaxLength(10);
+            entity.Property(e => e.MailingPostalCode).HasMaxLength(20);
             entity.HasIndex(e => e.Abbreviation).IsUnique();
             entity.HasOne(e => e.ParentOrganizationUnit)
                 .WithMany(e => e.Children)

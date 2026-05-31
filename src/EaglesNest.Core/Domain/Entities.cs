@@ -12,6 +12,11 @@ public class OrganizationUnit
     public DateOnly? CharterDate { get; set; }
     public string? City { get; set; }
     public string? StateCode { get; set; }
+    public string? MailingAddressLine1 { get; set; }
+    public string? MailingAddressLine2 { get; set; }
+    public string? MailingCity { get; set; }
+    public string? MailingStateCode { get; set; }
+    public string? MailingPostalCode { get; set; }
     public OrganizationStatus Status { get; set; } = OrganizationStatus.Operating;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
