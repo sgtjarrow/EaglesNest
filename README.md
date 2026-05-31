@@ -2,6 +2,16 @@
 
 Eagles Nest is planned as a Microsoft-native web application for managing U.S. Military Vets Motorcycle Club members, chapters, dues, fines, rides, and officer-reviewed member updates.
 
+## Application Baseline
+
+- .NET 9 Blazor Web App
+- ASP.NET Core Identity with SQL Server LocalDB for development
+- Entity Framework Core migrations
+- `EaglesNest.Core` for domain types
+- `EaglesNest.Data` for EF Core model configuration
+- `EaglesNest.Web` for the Blazor UI and Identity host
+- `EaglesNest.Tests` for automated tests
+
 ## Source Control
 
 This repository is configured for Visual Studio 2026 as the primary Git experience.
