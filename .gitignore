@@ -1,0 +1,31 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ASP.NET / .NET
+appsettings.Development.json
+*.db
+*.db-shm
+*.db-wal
+
+# Logs and local files
+*.log
+*.tmp
+*.local
+
+# Azure publish output
+*.PublishSettings
+publish/
+
+# OS files
+Thumbs.db
+Desktop.ini
