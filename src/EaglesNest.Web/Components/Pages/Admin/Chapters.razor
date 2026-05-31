@@ -504,21 +504,22 @@
 
     private void AddChapter()
     {
-        if (SelectedItem?.Level != OrganizationLevel.State)
+        var selectedState = SelectedItem;
+        if (selectedState?.Level != OrganizationLevel.State)
         {
             ShowError("Select a State before adding a chapter.");
             return;
         }
 
         selectedChapterId = null;
-            editModel = new ChapterEditModel
+        editModel = new ChapterEditModel
         {
             Level = OrganizationLevel.LocalChapter,
-            ParentOrganizationUnitId = SelectedItem.Id,
-            StateCode = SelectedItem.StateCode,
+            ParentOrganizationUnitId = selectedState.Id,
+            StateCode = selectedState.StateCode,
             Status = OrganizationStatus.Operating
         };
-        editorTitle = $"Add Chapter Under {SelectedItem.Name}";
+        editorTitle = $"Add Chapter Under {selectedState.Name}";
         currentSuspension = null;
         ClearStatus();
     }
