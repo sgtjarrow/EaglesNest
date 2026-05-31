@@ -24,9 +24,9 @@
                 <hr />
                 <ValidationSummary class="text-danger" role="alert" />
                 <div class="form-floating mb-3">
-                    <InputText @bind-Value="Input.Email" id="Input.Email" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com" />
-                    <label for="Input.Email" class="form-label">Email</label>
-                    <ValidationMessage For="() => Input.Email" class="text-danger" />
+                    <InputText @bind-Value="Input.Login" id="Input.Login" class="form-control" autocomplete="username" aria-required="true" placeholder="name@example.com or username" />
+                    <label for="Input.Login" class="form-label">Email or username</label>
+                    <ValidationMessage For="() => Input.Login" class="text-danger" />
                 </div>
                 <div class="form-floating mb-3">
                     <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="password" />
@@ -88,7 +88,7 @@
 
     public async Task LoginUser()
     {
-        var user = await UserManager.FindByEmailAsync(Input.Email);
+        var user = await FindUserAsync(Input.Login);
         if (user?.IsLoginDisabled == true)
         {
             Logger.LogWarning("Disabled user account attempted to log in.");
@@ -96,7 +96,9 @@
             return;
         }
 
-        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+        var result = user is null
+            ? Microsoft.AspNetCore.Identity.SignInResult.Failed
+            : await SignInManager.PasswordSignInAsync(user.UserName!, Input.Password, Input.RememberMe, lockoutOnFailure: true);
         if (result.Succeeded)
         {
             Logger.LogInformation("User logged in.");
@@ -119,11 +121,18 @@
         }
     }
 
+    private async Task<ApplicationUser?> FindUserAsync(string login)
+    {
+        return login.Contains('@', StringComparison.Ordinal)
+            ? await UserManager.FindByEmailAsync(login)
+            : await UserManager.FindByNameAsync(login);
+    }
+
     private sealed class InputModel
     {
         [Required]
-        [EmailAddress]
-        public string Email { get; set; } = "";
+        [Display(Name = "Email or username")]
+        public string Login { get; set; } = "";
 
         [Required]
         [DataType(DataType.Password)]

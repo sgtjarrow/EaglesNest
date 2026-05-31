@@ -22,6 +22,18 @@ When the web app starts in Development, it applies EF Core migrations and seeds 
 
 Confidential roster files should stay outside the repository and be imported through dedicated local import tooling.
 
+## Development Super Admin
+
+Development can seed a local super-admin account from ASP.NET Core user-secrets. The secret values are not committed.
+
+```powershell
+dotnet user-secrets set "DevelopmentSuperAdmin:UserName" "<username>" --project src/EaglesNest.Web/EaglesNest.Web.csproj
+dotnet user-secrets set "DevelopmentSuperAdmin:Email" "<email>" --project src/EaglesNest.Web/EaglesNest.Web.csproj
+dotnet user-secrets set "DevelopmentSuperAdmin:Password" "<password>" --project src/EaglesNest.Web/EaglesNest.Web.csproj
+```
+
+The development seeder confirms the account email and assigns a `SystemAdmin` role assignment when the app starts.
+
 ## Source Control
 
 This repository is configured for Visual Studio 2026 as the primary Git experience.
