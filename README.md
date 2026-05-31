@@ -18,4 +18,4 @@ The local shell does not currently expose `git` on `PATH`, so scripted commands 
 C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\TeamFoundation\Team Explorer\Git\cmd\git.exe
 ```
 
-For convenience, use `tools\git-vs2026.ps1` from this repository root.
+For convenience, use `tools\git-vs2026.cmd` from this repository root. A PowerShell helper is also included, but this machine currently blocks local `.ps1` execution by policy.

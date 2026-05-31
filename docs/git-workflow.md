@@ -30,9 +30,9 @@ When using PowerShell or automation in this workspace, call the Visual Studio bu
 Or use the helper script:
 
 ```powershell
-.\tools\git-vs2026.ps1 status
-.\tools\git-vs2026.ps1 switch dev
-.\tools\git-vs2026.ps1 switch -c feature/example
+.\tools\git-vs2026.cmd status
+.\tools\git-vs2026.cmd switch dev
+.\tools\git-vs2026.cmd switch -c feature/example
 ```
 
 ## GitHub Remote
@@ -40,7 +40,9 @@ Or use the helper script:
 After the GitHub repository is created, connect it from Visual Studio 2026 or add the remote with the helper script:
 
 ```powershell
-.\tools\git-vs2026.ps1 remote add origin https://github.com/<owner>/<repo>.git
-.\tools\git-vs2026.ps1 push -u origin dev
-.\tools\git-vs2026.ps1 push -u origin prod
+.\tools\git-vs2026.cmd remote add origin https://github.com/<owner>/<repo>.git
+.\tools\git-vs2026.cmd push -u origin dev
+.\tools\git-vs2026.cmd push -u origin prod
 ```
+
+`tools\git-vs2026.ps1` is also available if local PowerShell script execution is enabled.
