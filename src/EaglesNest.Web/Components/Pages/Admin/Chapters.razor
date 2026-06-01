@@ -23,7 +23,10 @@
 
 @if (!string.IsNullOrWhiteSpace(statusMessage))
 {
-    <div class="alert @statusClass" role="alert">@statusMessage</div>
+    <div class="alert @statusClass alert-dismissible fade show" role="alert">
+        @statusMessage
+        <button type="button" class="btn-close" aria-label="Close" @onclick="DismissStatus"></button>
+    </div>
 }
 
 <div class="row g-4">
@@ -58,7 +61,9 @@
                             {
                                 <span class="badge @StatusBadgeClass(row.Item.Status)">@row.Item.Status</span>
                             }
-                            @if (row.Item.Level == OrganizationLevel.State && row.Item.ActingStateChapterAbbreviation is not null)
+                            @if (row.Item.Level == OrganizationLevel.State &&
+                                                    row.Item.Status == OrganizationStatus.Operating &&
+                                                    row.Item.ActingStateChapterAbbreviation is not null)
                             {
                                 <span class="chapter-meta state-assignment">@row.Item.ActingStateChapterAbbreviation</span>
                             }
@@ -174,130 +179,162 @@
                 </EditForm>
             }
 
-            @if (CanSuspendSelected)
-            {
-                <hr />
-                <h3 class="h5">Suspend Chapter</h3>
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label" for="suspension-start">Start Date</label>
-                        <InputDate id="suspension-start" class="form-control" @bind-Value="suspensionStart" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="suspension-end">Planned End Date</label>
-                        <InputDate id="suspension-end" class="form-control" @bind-Value="suspensionEnd" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="suspension-notes">Notes</label>
-                        <InputText id="suspension-notes" class="form-control" @bind-Value="suspensionNotes" />
-                    </div>
-                    <div class="col-12">
-                        <button type="button" class="btn btn-outline-warning" @onclick="SuspendAsync">Suspend</button>
-                    </div>
-                </div>
-            }
-
-            @if (currentSuspension is not null)
-            {
-                <div class="alert alert-warning mt-3">
-                    Current suspension started @currentSuspension.StartsOn.ToString("yyyy-MM-dd").
-                    @if (currentSuspension.EndsOn is not null)
-                    {
-                        <span>Planned end: @currentSuspension.EndsOn.Value.ToString("yyyy-MM-dd").</span>
-                    }
-                </div>
-            }
-
-            @if (editModel.Id is not null && editModel.Level == OrganizationLevel.State)
-            {
-                <hr />
-                <h3 class="h5">Acting State Chapter</h3>
-                <div class="row g-3 align-items-end">
-                    <div class="col-md-5">
-                        <label class="form-label" for="state-chapter">Chapter</label>
-                        <InputSelect id="state-chapter" class="form-select" @bind-Value="selectedStateChapterId">
-                            <option value="">Select chapter</option>
-                            @foreach (var chapter in stateChapterOptions)
-                            {
-                                <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
-                            }
-                        </InputSelect>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="state-chapter-start">Start Date</label>
-                        <InputDate id="state-chapter-start" class="form-control" @bind-Value="stateChapterStart" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="state-chapter-notes">Notes</label>
-                        <InputText id="state-chapter-notes" class="form-control" @bind-Value="stateChapterNotes" />
-                    </div>
-                    <div class="col-12">
-                        <button type="button" class="btn btn-outline-primary" @onclick="AssignStateChapterAsync">Assign State Chapter</button>
-                    </div>
-                </div>
-
-                @if (stateAssignments.Count > 0)
-                {
-                    <div class="table-responsive mt-3">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Chapter</th>
-                                    <th>Start</th>
-                                    <th>End</th>
-                                    <th>Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var assignment in stateAssignments)
-                                {
-                                    <tr>
-                                        <td>@assignment.LocalChapterAbbreviation - @assignment.LocalChapterName</td>
-                                        <td>@assignment.StartsOn.ToString("yyyy-MM-dd")</td>
-                                        <td>@(assignment.EndsOn?.ToString("yyyy-MM-dd") ?? "Current")</td>
-                                        <td>@assignment.Notes</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            }
-
             @if (editModel.Id is not null)
             {
                 <hr />
-                <h3 class="h5">Audit Log</h3>
-                @if (auditLogs.Count == 0)
-                {
-                    <p class="text-muted mb-0">No audit entries yet.</p>
-                }
-                else
-                {
-                    <div class="table-responsive audit-log">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Action</th>
-                                    <th>Summary</th>
-                                    <th>Actor</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var audit in auditLogs)
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button type="button"
+                                class="nav-link @(activeLogTab == ChapterLogTab.Audit ? "active" : null)"
+                                @onclick="() => activeLogTab = ChapterLogTab.Audit">
+                            Audit Log
+                        </button>
+                    </li>
+                    @if (ShowStateAssignmentTab)
+                    {
+                        <li class="nav-item" role="presentation">
+                            <button type="button"
+                                    class="nav-link @(activeLogTab == ChapterLogTab.StateAssignment ? "active" : null)"
+                                    @onclick="() => activeLogTab = ChapterLogTab.StateAssignment">
+                                State Assignment
+                            </button>
+                        </li>
+                    }
+                    @if (ShowSuspensionTab)
+                    {
+                        <li class="nav-item" role="presentation">
+                            <button type="button"
+                                    class="nav-link @(activeLogTab == ChapterLogTab.Suspension ? "active" : null)"
+                                    @onclick="() => activeLogTab = ChapterLogTab.Suspension">
+                                Suspension
+                            </button>
+                        </li>
+                    }
+                </ul>
+                <div class="log-tab-panel">
+                    @if (activeLogTab == ChapterLogTab.Audit)
+                    {
+                        @if (auditLogs.Count == 0)
+                        {
+                            <p class="text-muted mb-0">No audit entries yet.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive log-table">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Action</th>
+                                            <th>Summary</th>
+                                            <th>Actor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var audit in auditLogs)
+                                        {
+                                            <tr>
+                                                <td class="text-nowrap">@audit.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd h:mm tt")</td>
+                                                <td>@DisplayAuditAction(audit.Action)</td>
+                                                <td>@audit.Summary</td>
+                                                <td>@audit.ActorName <span class="text-muted">(@audit.ActorSource)</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                    else if (activeLogTab == ChapterLogTab.StateAssignment)
+                    {
+                        <h3 class="h6">Acting State Chapter</h3>
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-5">
+                                <label class="form-label" for="state-chapter">Chapter</label>
+                                <InputSelect id="state-chapter" class="form-select" @bind-Value="selectedStateChapterId">
+                                    <option value="">Select chapter</option>
+                                    @foreach (var chapter in stateChapterOptions)
+                                    {
+                                        <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="state-chapter-start">Start Date</label>
+                                <InputDate id="state-chapter-start" class="form-control" @bind-Value="stateChapterStart" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="state-chapter-notes">Notes</label>
+                                <InputText id="state-chapter-notes" class="form-control" @bind-Value="stateChapterNotes" />
+                            </div>
+                            <div class="col-12">
+                                <button type="button" class="btn btn-outline-primary" @onclick="AssignStateChapterAsync">Assign State Chapter</button>
+                            </div>
+                        </div>
+
+                        @if (stateAssignments.Count > 0)
+                        {
+                            <div class="table-responsive log-table mt-3">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Chapter</th>
+                                            <th>Start</th>
+                                            <th>End</th>
+                                            <th>Notes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var assignment in stateAssignments)
+                                        {
+                                            <tr>
+                                                <td>@assignment.LocalChapterAbbreviation - @assignment.LocalChapterName</td>
+                                                <td>@assignment.StartsOn.ToString("yyyy-MM-dd")</td>
+                                                <td>@(assignment.EndsOn?.ToString("yyyy-MM-dd") ?? "Current")</td>
+                                                <td>@assignment.Notes</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
+                    else if (activeLogTab == ChapterLogTab.Suspension)
+                    {
+                        @if (currentSuspension is not null)
+                        {
+                            <div class="alert alert-warning">
+                                Current suspension started @currentSuspension.StartsOn.ToString("yyyy-MM-dd").
+                                @if (currentSuspension.EndsOn is not null)
                                 {
-                                    <tr>
-                                        <td class="text-nowrap">@audit.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd h:mm tt")</td>
-                                        <td>@DisplayAuditAction(audit.Action)</td>
-                                        <td>@audit.Summary</td>
-                                        <td>@audit.ActorName <span class="text-muted">(@audit.ActorSource)</span></td>
-                                    </tr>
+                                    <span>Planned end: @currentSuspension.EndsOn.Value.ToString("yyyy-MM-dd").</span>
                                 }
-                            </tbody>
-                        </table>
-                    </div>
-                }
+                            </div>
+                        }
+
+                        @if (CanSuspendSelected)
+                        {
+                            <h3 class="h6">Suspend Chapter</h3>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="suspension-start">Start Date</label>
+                                    <InputDate id="suspension-start" class="form-control" @bind-Value="suspensionStart" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="suspension-end">Planned End Date</label>
+                                    <InputDate id="suspension-end" class="form-control" @bind-Value="suspensionEnd" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="suspension-notes">Notes</label>
+                                    <InputText id="suspension-notes" class="form-control" @bind-Value="suspensionNotes" />
+                                </div>
+                                <div class="col-12">
+                                    <button type="button" class="btn btn-outline-warning" @onclick="SuspendAsync">Suspend</button>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
             }
         </div>
     </section>
@@ -354,7 +391,13 @@
         white-space: nowrap;
     }
 
-    .audit-log {
+    .log-tab-panel {
+        border: 1px solid #dee2e6;
+        border-top: 0;
+        padding: 1rem;
+    }
+
+    .log-table {
         max-height: 18rem;
         overflow: auto;
     }
@@ -382,6 +425,7 @@
     private Guid? pendingNewStateId;
     private bool creatingFirstChapterForNewState;
     private bool includeUnavailable;
+    private ChapterLogTab activeLogTab = ChapterLogTab.Audit;
 
     private bool IncludeUnavailable
     {
@@ -424,6 +468,8 @@
                                              editModel.Level == OrganizationLevel.LocalChapter &&
                                              editModel.Status == OrganizationStatus.Suspended &&
                                              !IsEternalChapter;
+    private bool ShowStateAssignmentTab => editModel.Id is not null && editModel.Level == OrganizationLevel.State;
+    private bool ShowSuspensionTab => currentSuspension is not null || CanSuspendSelected || CanEndSuspensionSelected;
 
     protected override async Task OnInitializedAsync()
     {
@@ -514,6 +560,7 @@
             : null;
         await LoadStateAssignmentDetailsAsync(id, organization.Level);
         auditLogs = await ChapterService.GetChapterAuditLogsAsync(id);
+        EnsureActiveLogTabIsValid();
         ClearStatus();
     }
 
@@ -545,6 +592,7 @@
         editorTitle = "Add State";
         currentSuspension = null;
         auditLogs = [];
+        activeLogTab = ChapterLogTab.Audit;
         pendingNewStateId = null;
         creatingFirstChapterForNewState = false;
         ClearStatus();
@@ -570,6 +618,7 @@
         editorTitle = $"Add Chapter Under {selectedState.Name}";
         currentSuspension = null;
         auditLogs = [];
+        activeLogTab = ChapterLogTab.Audit;
         creatingFirstChapterForNewState = pendingNewStateId == selectedState.Id;
         ClearStatus();
     }
@@ -749,6 +798,7 @@
             editModel = new();
             editorTitle = "Select or add a chapter";
             auditLogs = [];
+            activeLogTab = ChapterLogTab.Audit;
             ClearStatus();
         }
     }
@@ -813,6 +863,19 @@
         };
     }
 
+    private void EnsureActiveLogTabIsValid()
+    {
+        if (activeLogTab == ChapterLogTab.StateAssignment && !ShowStateAssignmentTab)
+        {
+            activeLogTab = ChapterLogTab.Audit;
+        }
+
+        if (activeLogTab == ChapterLogTab.Suspension && !ShowSuspensionTab)
+        {
+            activeLogTab = ChapterLogTab.Audit;
+        }
+    }
+
     private void ShowSuccess(string message)
     {
         statusMessage = message;
@@ -831,5 +894,17 @@
         statusClass = "alert-info";
     }
 
+    private void DismissStatus()
+    {
+        ClearStatus();
+    }
+
     private sealed record ChapterDisplayRow(ChapterTreeItem Item, int Depth);
+
+    private enum ChapterLogTab
+    {
+        Audit,
+        StateAssignment,
+        Suspension
+    }
 }

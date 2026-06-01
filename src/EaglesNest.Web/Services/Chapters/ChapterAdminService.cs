@@ -55,7 +55,8 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         foreach (var chapter in chapters.Where(item => item.Level == OrganizationLevel.State))
         {
-            if (currentAssignments.TryGetValue(chapter.Id, out var assignment))
+            if (chapter.Status == OrganizationStatus.Operating &&
+                currentAssignments.TryGetValue(chapter.Id, out var assignment))
             {
                 chapter.ActingStateChapterId = assignment.LocalChapterOrganizationUnitId;
                 chapter.ActingStateChapterAbbreviation = assignment.Abbreviation;
@@ -494,6 +495,16 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         if (state is null || state.Status == OrganizationStatus.Closed)
         {
             return;
+        }
+
+        var closedOn = DateOnly.FromDateTime(DateTime.UtcNow);
+        var currentAssignments = await dbContext.StateChapterAssignments
+            .Where(assignment => assignment.StateOrganizationUnitId == state.Id && assignment.EndsOn == null)
+            .ToListAsync();
+
+        foreach (var assignment in currentAssignments)
+        {
+            assignment.EndsOn = closedOn;
         }
 
         state.Status = OrganizationStatus.Closed;

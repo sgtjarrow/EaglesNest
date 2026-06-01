@@ -128,6 +128,15 @@ public class ChapterAdminServiceTests
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
         var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id);
+        dbContext.StateChapterAssignments.Add(new StateChapterAssignment
+        {
+            Id = Guid.NewGuid(),
+            StateOrganizationUnitId = state.Id,
+            LocalChapterOrganizationUnitId = chapter.Id,
+            StartsOn = new DateOnly(2020, 1, 1),
+            ActorName = TestActor.ActorName,
+            ActorSource = TestActor.ActorSource
+        });
         await dbContext.SaveChangesAsync();
 
         var service = new ChapterAdminService(dbContext);
@@ -136,7 +145,35 @@ public class ChapterAdminServiceTests
 
         Assert.Equal(OrganizationStatus.Closed, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
         Assert.Equal(OrganizationStatus.Closed, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
+        Assert.NotNull((await dbContext.StateChapterAssignments.SingleAsync()).EndsOn);
         Assert.Equal(2, await dbContext.AuditLogs.CountAsync(log => log.Action == AuditAction.Closed));
+    }
+
+    [Fact]
+    public async Task GetHierarchyAsync_DoesNotShowActingChapterForClosedState()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id, OrganizationStatus.Closed);
+        var chapter = AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, state.Id, OrganizationStatus.Closed);
+        dbContext.StateChapterAssignments.Add(new StateChapterAssignment
+        {
+            Id = Guid.NewGuid(),
+            StateOrganizationUnitId = state.Id,
+            LocalChapterOrganizationUnitId = chapter.Id,
+            StartsOn = new DateOnly(2020, 1, 1),
+            ActorName = TestActor.ActorName,
+            ActorSource = TestActor.ActorSource
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = new ChapterAdminService(dbContext);
+
+        var hierarchy = await service.GetHierarchyAsync(includeUnavailable: true);
+        var closedState = hierarchy.Single().Children.Single(child => child.Id == state.Id);
+
+        Assert.Null(closedState.ActingStateChapterId);
+        Assert.Null(closedState.ActingStateChapterAbbreviation);
     }
 
     [Fact]
