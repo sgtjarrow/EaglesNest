@@ -16,7 +16,11 @@
 
 <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end mb-3">
     <div class="form-check form-switch">
-        <InputCheckbox id="include-unavailable" class="form-check-input" @bind-Value="IncludeUnavailable" />
+        <input id="include-unavailable"
+               class="form-check-input"
+               type="checkbox"
+               checked="@includeUnavailable"
+               @onchange="OnIncludeUnavailableChangedAsync" />
         <label class="form-check-label" for="include-unavailable">Include closed/suspended</label>
     </div>
 </div>
@@ -427,21 +431,6 @@
     private bool includeUnavailable;
     private ChapterLogTab activeLogTab = ChapterLogTab.Audit;
 
-    private bool IncludeUnavailable
-    {
-        get => includeUnavailable;
-        set
-        {
-            if (includeUnavailable == value)
-            {
-                return;
-            }
-
-            includeUnavailable = value;
-            _ = InvokeAsync(async () => await LoadAsync());
-        }
-    }
-
     private string? SearchText
     {
         get => searchText;
@@ -450,6 +439,12 @@
             searchText = value;
             RefreshDisplayRows();
         }
+    }
+
+    private async Task OnIncludeUnavailableChangedAsync(ChangeEventArgs args)
+    {
+        includeUnavailable = args.Value is bool value && value;
+        await LoadAsync();
     }
 
     private ChapterTreeItem? SelectedItem => FindItem(hierarchy, selectedChapterId);
