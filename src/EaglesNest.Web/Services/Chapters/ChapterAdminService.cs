@@ -8,6 +8,17 @@ namespace EaglesNest.Web.Services.Chapters;
 
 public class ChapterAdminService(ApplicationDbContext dbContext)
 {
+    private static readonly AuditAction[] ChapterAuditDisplayActions =
+    [
+        AuditAction.Created,
+        AuditAction.Updated,
+        AuditAction.Closed,
+        AuditAction.Reopened,
+        AuditAction.MemberAdded,
+        AuditAction.MemberRemoved,
+        AuditAction.MemberUpdated
+    ];
+
     public async Task<IReadOnlyList<ChapterTreeItem>> GetHierarchyAsync(bool includeUnavailable = false)
     {
         var chapters = await dbContext.OrganizationUnits
@@ -149,6 +160,38 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             .SingleOrDefaultAsync();
     }
 
+    public async Task<IReadOnlyList<ChapterAuditLogItem>> GetChapterAuditLogsAsync(Guid organizationUnitId, int take = 25)
+    {
+        var logs = await dbContext.AuditLogs
+            .AsNoTracking()
+            .Where(log => log.OrganizationUnitId == organizationUnitId &&
+                          ChapterAuditDisplayActions.Contains(log.Action))
+            .OrderByDescending(log => log.CreatedAt)
+            .ThenByDescending(log => log.Id)
+            .Take(take)
+            .Select(log => new
+            {
+                log.Id,
+                log.CreatedAt,
+                log.Action,
+                log.ActorName,
+                log.ActorSource,
+                log.DetailsJson
+            })
+            .ToListAsync();
+
+        return logs.Select(log => new ChapterAuditLogItem
+            {
+                Id = log.Id,
+                CreatedAt = log.CreatedAt,
+                Action = log.Action,
+                ActorName = log.ActorName,
+                ActorSource = log.ActorSource,
+                Summary = BuildAuditSummary(log.Action, log.DetailsJson)
+            })
+            .ToList();
+    }
+
     public async Task<ChapterSaveResult> CreateAsync(ChapterEditModel input, ChapterActor actor)
     {
         Normalize(input);
@@ -180,6 +223,34 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         dbContext.OrganizationUnits.Add(organization);
         AddAudit(AuditAction.Created, organization, actor, input);
+
+        if (organization.Level == OrganizationLevel.LocalChapter &&
+            organization.ParentOrganizationUnitId is Guid stateId)
+        {
+            var parentState = await dbContext.OrganizationUnits
+                .SingleOrDefaultAsync(unit => unit.Id == stateId && unit.Level == OrganizationLevel.State);
+
+            if (parentState?.Status == OrganizationStatus.Closed)
+            {
+                parentState.Status = OrganizationStatus.Operating;
+                AddAudit(AuditAction.Reopened, parentState, actor, new
+                {
+                    parentState.Id,
+                    parentState.Status,
+                    Reason = "Reopened automatically because a local chapter was added.",
+                    LocalChapterId = organization.Id,
+                    organization.Abbreviation
+                });
+
+                await AddStateChapterAssignmentAsync(
+                    parentState,
+                    organization,
+                    DateOnly.FromDateTime(DateTime.UtcNow),
+                    "Automatically assigned when chapter was added to a closed State.",
+                    actor);
+            }
+        }
+
         await dbContext.SaveChangesAsync();
         return ChapterSaveResult.Success(organization.Id);
     }
@@ -232,6 +303,8 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             return ChapterSaveResult.Failure([.. validation]);
         }
 
+        var changes = BuildChangeSet(organization, input);
+
         organization.Name = input.Name;
         organization.Abbreviation = input.Abbreviation;
         organization.Level = input.Level;
@@ -245,7 +318,11 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         organization.MailingPostalCode = input.MailingPostalCode;
         organization.CharterDate = input.CharterDate;
 
-        AddAudit(AuditAction.Updated, organization, actor, input);
+        if (changes.Count > 0)
+        {
+            AddAudit(AuditAction.Updated, organization, actor, new { Changes = changes });
+        }
+
         await dbContext.SaveChangesAsync();
         return ChapterSaveResult.Success(organization.Id);
     }
@@ -265,6 +342,13 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         organization.Status = OrganizationStatus.Closed;
         AddAudit(AuditAction.Closed, organization, actor, new { organization.Id, organization.Status });
+
+        if (organization.Level == OrganizationLevel.LocalChapter &&
+            organization.ParentOrganizationUnitId is Guid stateId)
+        {
+            await CloseStateIfLastChapterClosedAsync(stateId, organization, actor);
+        }
+
         await dbContext.SaveChangesAsync();
         return ChapterSaveResult.Success(organization.Id);
     }
@@ -279,6 +363,13 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         organization.Status = OrganizationStatus.Operating;
         AddAudit(AuditAction.Reopened, organization, actor, new { organization.Id, organization.Status });
+
+        if (organization.Level == OrganizationLevel.LocalChapter &&
+            organization.ParentOrganizationUnitId is Guid stateId)
+        {
+            await ReopenParentStateAsync(stateId, organization, actor);
+        }
+
         await dbContext.SaveChangesAsync();
         return ChapterSaveResult.Success(organization.Id);
     }
@@ -378,6 +469,73 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             return ChapterSaveResult.Failure("Acting State chapter must be a local chapter in the selected State.");
         }
 
+        await AddStateChapterAssignmentAsync(state, chapter, startsOn, notes, actor);
+        await dbContext.SaveChangesAsync();
+        return ChapterSaveResult.Success(state.Id);
+    }
+
+    private async Task CloseStateIfLastChapterClosedAsync(Guid stateId, OrganizationUnit closedChapter, ChapterActor actor)
+    {
+        var hasNonClosedChapter = await dbContext.OrganizationUnits.AnyAsync(unit =>
+            unit.ParentOrganizationUnitId == stateId &&
+            unit.Level == OrganizationLevel.LocalChapter &&
+            unit.Id != closedChapter.Id &&
+            unit.Status != OrganizationStatus.Closed);
+
+        if (hasNonClosedChapter)
+        {
+            return;
+        }
+
+        var state = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit =>
+            unit.Id == stateId &&
+            unit.Level == OrganizationLevel.State);
+
+        if (state is null || state.Status == OrganizationStatus.Closed)
+        {
+            return;
+        }
+
+        state.Status = OrganizationStatus.Closed;
+        AddAudit(AuditAction.Closed, state, actor, new
+        {
+            state.Id,
+            state.Status,
+            Reason = "Closed automatically because the last local chapter was closed.",
+            LocalChapterId = closedChapter.Id,
+            closedChapter.Abbreviation
+        });
+    }
+
+    private async Task ReopenParentStateAsync(Guid stateId, OrganizationUnit reopenedChapter, ChapterActor actor)
+    {
+        var state = await dbContext.OrganizationUnits.SingleOrDefaultAsync(unit =>
+            unit.Id == stateId &&
+            unit.Level == OrganizationLevel.State);
+
+        if (state is null || state.Status != OrganizationStatus.Closed)
+        {
+            return;
+        }
+
+        state.Status = OrganizationStatus.Operating;
+        AddAudit(AuditAction.Reopened, state, actor, new
+        {
+            state.Id,
+            state.Status,
+            Reason = "Reopened automatically because a local chapter was reopened.",
+            LocalChapterId = reopenedChapter.Id,
+            reopenedChapter.Abbreviation
+        });
+    }
+
+    private async Task AddStateChapterAssignmentAsync(
+        OrganizationUnit state,
+        OrganizationUnit chapter,
+        DateOnly startsOn,
+        string? notes,
+        ChapterActor actor)
+    {
         var currentAssignments = await dbContext.StateChapterAssignments
             .Where(assignment => assignment.StateOrganizationUnitId == state.Id && assignment.EndsOn == null)
             .ToListAsync();
@@ -407,8 +565,6 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             StartsOn = startsOn,
             Notes = notes
         });
-        await dbContext.SaveChangesAsync();
-        return ChapterSaveResult.Success(state.Id);
     }
 
     private async Task<List<string>> ValidateAsync(ChapterEditModel input, Guid? existingId)
@@ -549,6 +705,124 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
                string.Equals(abbreviation, "US-100", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static List<AuditFieldChange> BuildChangeSet(OrganizationUnit organization, ChapterEditModel input)
+    {
+        var changes = new List<AuditFieldChange>();
+        AddChange(changes, "Name", organization.Name, input.Name);
+        AddChange(changes, "Abbreviation", organization.Abbreviation, input.Abbreviation);
+        AddChange(changes, "City", organization.City, input.City);
+        AddChange(changes, "State Code", organization.StateCode, input.StateCode);
+        AddChange(changes, "Mailing Address Line 1", organization.MailingAddressLine1, input.MailingAddressLine1);
+        AddChange(changes, "Mailing Address Line 2", organization.MailingAddressLine2, input.MailingAddressLine2);
+        AddChange(changes, "Mailing City", organization.MailingCity, input.MailingCity);
+        AddChange(changes, "Mailing State", organization.MailingStateCode, input.MailingStateCode);
+        AddChange(changes, "Mailing ZIP Code", organization.MailingPostalCode, input.MailingPostalCode);
+        AddChange(changes, "Charter Date", FormatAuditValue(organization.CharterDate), FormatAuditValue(input.CharterDate));
+        return changes;
+    }
+
+    private static void AddChange(List<AuditFieldChange> changes, string field, string? oldValue, string? newValue)
+    {
+        if (string.Equals(oldValue, newValue, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        changes.Add(new AuditFieldChange(field, oldValue, newValue));
+    }
+
+    private static string? FormatAuditValue(DateOnly? value)
+    {
+        return value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildAuditSummary(AuditAction action, string? detailsJson)
+    {
+        return action switch
+        {
+            AuditAction.Created => "Chapter created.",
+            AuditAction.Updated => BuildUpdatedSummary(detailsJson),
+            AuditAction.Closed => BuildReasonSummary(detailsJson, "Chapter closed."),
+            AuditAction.Reopened => BuildReasonSummary(detailsJson, "Chapter reopened."),
+            AuditAction.MemberAdded => "Member added.",
+            AuditAction.MemberRemoved => "Member removed.",
+            AuditAction.MemberUpdated => "Member updated.",
+            _ => action.ToString()
+        };
+    }
+
+    private static string BuildUpdatedSummary(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return "Chapter details updated.";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            if (!document.RootElement.TryGetProperty("Changes", out var changes) ||
+                changes.ValueKind != JsonValueKind.Array)
+            {
+                return "Chapter details updated.";
+            }
+
+            var summaries = changes.EnumerateArray()
+                .Select(change =>
+                {
+                    var field = GetJsonString(change, "Field");
+                    if (string.IsNullOrWhiteSpace(field))
+                    {
+                        return null;
+                    }
+
+                    return $"{field} changed from {DisplayAuditValue(GetJsonString(change, "From"))} to {DisplayAuditValue(GetJsonString(change, "To"))}";
+                })
+                .Where(summary => !string.IsNullOrWhiteSpace(summary))
+                .Take(3)
+                .ToList();
+
+            return summaries.Count == 0
+                ? "Chapter details updated."
+                : string.Join("; ", summaries) + (changes.GetArrayLength() > summaries.Count ? "." : ".");
+        }
+        catch (JsonException)
+        {
+            return "Chapter details updated.";
+        }
+    }
+
+    private static string BuildReasonSummary(string? detailsJson, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return fallback;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            var reason = GetJsonString(document.RootElement, "Reason");
+            return string.IsNullOrWhiteSpace(reason) ? fallback : reason;
+        }
+        catch (JsonException)
+        {
+            return fallback;
+        }
+    }
+
+    private static string? GetJsonString(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var property) && property.ValueKind != JsonValueKind.Null
+            ? property.ToString()
+            : null;
+    }
+
+    private static string DisplayAuditValue(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "(blank)" : $"\"{value}\"";
+    }
+
     private void AddAudit(AuditAction action, OrganizationUnit organization, ChapterActor actor, object details)
     {
         dbContext.AuditLogs.Add(new AuditLog
@@ -563,4 +837,6 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             DetailsJson = JsonSerializer.Serialize(details)
         });
     }
+
+    private sealed record AuditFieldChange(string Field, string? From, string? To);
 }

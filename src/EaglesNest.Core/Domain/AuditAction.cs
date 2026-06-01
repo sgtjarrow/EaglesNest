@@ -14,5 +14,8 @@ public enum AuditAction
     Reopened = 10,
     Suspended = 11,
     SuspensionEnded = 12,
-    StateChapterAssigned = 13
+    StateChapterAssigned = 13,
+    MemberAdded = 14,
+    MemberRemoved = 15,
+    MemberUpdated = 16
 }

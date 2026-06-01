@@ -263,6 +263,42 @@
                     </div>
                 }
             }
+
+            @if (editModel.Id is not null)
+            {
+                <hr />
+                <h3 class="h5">Audit Log</h3>
+                @if (auditLogs.Count == 0)
+                {
+                    <p class="text-muted mb-0">No audit entries yet.</p>
+                }
+                else
+                {
+                    <div class="table-responsive audit-log">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                    <th>Summary</th>
+                                    <th>Actor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var audit in auditLogs)
+                                {
+                                    <tr>
+                                        <td class="text-nowrap">@audit.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd h:mm tt")</td>
+                                        <td>@DisplayAuditAction(audit.Action)</td>
+                                        <td>@audit.Summary</td>
+                                        <td>@audit.ActorName <span class="text-muted">(@audit.ActorSource)</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
         </div>
     </section>
 </div>
@@ -317,12 +353,18 @@
     .state-assignment {
         white-space: nowrap;
     }
+
+    .audit-log {
+        max-height: 18rem;
+        overflow: auto;
+    }
 </style>
 
 @code {
     private IReadOnlyList<ChapterTreeItem> hierarchy = [];
     private IReadOnlyList<ChapterTreeItem> stateChapterOptions = [];
     private IReadOnlyList<StateChapterAssignmentModel> stateAssignments = [];
+    private IReadOnlyList<ChapterAuditLogItem> auditLogs = [];
     private List<ChapterDisplayRow> displayRows = [];
     private ChapterEditModel editModel = new();
     private ChapterSuspension? currentSuspension;
@@ -471,6 +513,7 @@
             ? await ChapterService.GetCurrentSuspensionAsync(id)
             : null;
         await LoadStateAssignmentDetailsAsync(id, organization.Level);
+        auditLogs = await ChapterService.GetChapterAuditLogsAsync(id);
         ClearStatus();
     }
 
@@ -501,6 +544,7 @@
         };
         editorTitle = "Add State";
         currentSuspension = null;
+        auditLogs = [];
         pendingNewStateId = null;
         creatingFirstChapterForNewState = false;
         ClearStatus();
@@ -525,6 +569,7 @@
         };
         editorTitle = $"Add Chapter Under {selectedState.Name}";
         currentSuspension = null;
+        auditLogs = [];
         creatingFirstChapterForNewState = pendingNewStateId == selectedState.Id;
         ClearStatus();
     }
@@ -703,6 +748,7 @@
         {
             editModel = new();
             editorTitle = "Select or add a chapter";
+            auditLogs = [];
             ClearStatus();
         }
     }
@@ -753,6 +799,17 @@
             OrganizationStatus.Suspended => "text-bg-warning",
             OrganizationStatus.Closed => "text-bg-secondary",
             _ => "text-bg-light"
+        };
+    }
+
+    private static string DisplayAuditAction(AuditAction action)
+    {
+        return action switch
+        {
+            AuditAction.MemberAdded => "Member Added",
+            AuditAction.MemberRemoved => "Member Removed",
+            AuditAction.MemberUpdated => "Member Updated",
+            _ => action.ToString()
         };
     }
 
