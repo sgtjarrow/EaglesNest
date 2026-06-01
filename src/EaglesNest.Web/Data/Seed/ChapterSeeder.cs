@@ -531,7 +531,8 @@ public static class ChapterSeeder
         foreach (var state in states.Where(state => !requiredStateAbbreviations.Contains(state.Abbreviation)))
         {
             var hasChildren = await dbContext.OrganizationUnits.AnyAsync(unit => unit.ParentOrganizationUnitId == state.Id);
-            if (!hasChildren)
+            var hasAuditHistory = await dbContext.AuditLogs.AnyAsync(log => log.OrganizationUnitId == state.Id);
+            if (!hasChildren && !hasAuditHistory)
             {
                 state.Status = OrganizationStatus.Closed;
             }

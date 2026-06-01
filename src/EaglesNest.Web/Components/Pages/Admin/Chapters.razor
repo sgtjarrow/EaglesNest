@@ -337,6 +337,8 @@
     private string? suspensionNotes;
     private DateOnly stateChapterStart = DateOnly.FromDateTime(DateTime.Today);
     private string? stateChapterNotes;
+    private Guid? pendingNewStateId;
+    private bool creatingFirstChapterForNewState;
     private bool includeUnavailable;
 
     private bool IncludeUnavailable
@@ -499,6 +501,8 @@
         };
         editorTitle = "Add State";
         currentSuspension = null;
+        pendingNewStateId = null;
+        creatingFirstChapterForNewState = false;
         ClearStatus();
     }
 
@@ -521,12 +525,19 @@
         };
         editorTitle = $"Add Chapter Under {selectedState.Name}";
         currentSuspension = null;
+        creatingFirstChapterForNewState = pendingNewStateId == selectedState.Id;
         ClearStatus();
     }
 
     private async Task SaveAsync()
     {
         var actor = await GetCurrentActorAsync();
+        var wasCreatingState = editModel.Id is null && editModel.Level == OrganizationLevel.State;
+        var wasCreatingFirstChapter = editModel.Id is null &&
+                                      editModel.Level == OrganizationLevel.LocalChapter &&
+                                      creatingFirstChapterForNewState &&
+                                      pendingNewStateId is Guid pendingStateId &&
+                                      editModel.ParentOrganizationUnitId == pendingStateId;
         var result = editModel.Id is Guid id
             ? await ChapterService.UpdateAsync(id, editModel, actor)
             : await ChapterService.CreateAsync(editModel, actor);
@@ -535,6 +546,37 @@
         {
             ShowError(string.Join(" ", result.Errors));
             return;
+        }
+
+        if (wasCreatingState && result.ChapterId is Guid newStateId)
+        {
+            pendingNewStateId = newStateId;
+            await LoadAsync();
+            await SelectChapter(newStateId);
+            AddChapter();
+            ShowSuccess("State saved. Add the first chapter to finish setup.");
+            return;
+        }
+
+        if (wasCreatingFirstChapter &&
+            result.ChapterId is Guid newChapterId &&
+            pendingNewStateId is Guid stateId)
+        {
+            var assignmentResult = await ChapterService.AssignStateChapterAsync(
+                stateId,
+                newChapterId,
+                DateOnly.FromDateTime(DateTime.Today),
+                "Automatically assigned as first chapter for new State.",
+                actor);
+
+            if (!assignmentResult.Succeeded)
+            {
+                ShowError(string.Join(" ", assignmentResult.Errors));
+                return;
+            }
+
+            pendingNewStateId = null;
+            creatingFirstChapterForNewState = false;
         }
 
         await LoadAsync();
@@ -625,6 +667,34 @@
 
     private async Task CancelEdit()
     {
+        if (creatingFirstChapterForNewState && pendingNewStateId is Guid stateId)
+        {
+            var result = await ChapterService.AbandonEmptyStateAsync(stateId);
+            pendingNewStateId = null;
+            creatingFirstChapterForNewState = false;
+            await LoadAsync();
+
+            if (!result.Succeeded)
+            {
+                ShowError(string.Join(" ", result.Errors));
+                return;
+            }
+
+            var national = hierarchy.FirstOrDefault(item => item.Level == OrganizationLevel.National);
+            if (national is not null)
+            {
+                await SelectChapter(national.Id);
+            }
+            else
+            {
+                editModel = new();
+                editorTitle = "Select or add a chapter";
+            }
+
+            ShowSuccess("New State setup canceled.");
+            return;
+        }
+
         if (selectedChapterId is Guid id)
         {
             await SelectChapter(id);

@@ -184,6 +184,38 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         return ChapterSaveResult.Success(organization.Id);
     }
 
+    public async Task<ChapterSaveResult> AbandonEmptyStateAsync(Guid stateOrganizationUnitId)
+    {
+        var state = await dbContext.OrganizationUnits
+            .SingleOrDefaultAsync(unit => unit.Id == stateOrganizationUnitId);
+        if (state is null)
+        {
+            return ChapterSaveResult.Success(stateOrganizationUnitId);
+        }
+
+        if (state.Level != OrganizationLevel.State)
+        {
+            return ChapterSaveResult.Failure("Only empty State records can be abandoned.");
+        }
+
+        var hasChildren = await dbContext.OrganizationUnits
+            .AnyAsync(unit => unit.ParentOrganizationUnitId == state.Id);
+        var hasAssignments = await dbContext.StateChapterAssignments
+            .AnyAsync(assignment => assignment.StateOrganizationUnitId == state.Id);
+        if (hasChildren || hasAssignments)
+        {
+            return ChapterSaveResult.Failure("State cannot be abandoned after a chapter has been added.");
+        }
+
+        var auditLogs = await dbContext.AuditLogs
+            .Where(log => log.OrganizationUnitId == state.Id)
+            .ToListAsync();
+        dbContext.AuditLogs.RemoveRange(auditLogs);
+        dbContext.OrganizationUnits.Remove(state);
+        await dbContext.SaveChangesAsync();
+        return ChapterSaveResult.Success(stateOrganizationUnitId);
+    }
+
     public async Task<ChapterSaveResult> UpdateAsync(Guid id, ChapterEditModel input, ChapterActor actor)
     {
         Normalize(input);

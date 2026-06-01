@@ -183,6 +183,44 @@ public class ChapterAdminServiceTests
     }
 
     [Fact]
+    public async Task AbandonEmptyStateAsync_RemovesStateAndAudit()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        await dbContext.SaveChangesAsync();
+
+        var service = new ChapterAdminService(dbContext);
+        var result = await service.CreateAsync(new ChapterEditModel
+        {
+            Name = "Colorado",
+            Abbreviation = "CO",
+            Level = OrganizationLevel.State,
+            ParentOrganizationUnitId = national.Id
+        }, TestActor);
+
+        Assert.True(result.Succeeded);
+        Assert.True((await service.AbandonEmptyStateAsync(result.ChapterId!.Value)).Succeeded);
+        Assert.False(await dbContext.OrganizationUnits.AnyAsync(unit => unit.Abbreviation == "CO"));
+        Assert.False(await dbContext.AuditLogs.AnyAsync());
+    }
+
+    [Fact]
+    public async Task AbandonEmptyStateAsync_RejectsStateWithChildChapter()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var state = AddOrganization(dbContext, "Colorado", "CO", OrganizationLevel.State, national.Id);
+        AddOrganization(dbContext, "Denver", "CO-1", OrganizationLevel.LocalChapter, state.Id);
+        await dbContext.SaveChangesAsync();
+
+        var service = new ChapterAdminService(dbContext);
+        var result = await service.AbandonEmptyStateAsync(state.Id);
+
+        Assert.False(result.Succeeded);
+        Assert.True(await dbContext.OrganizationUnits.AnyAsync(unit => unit.Id == state.Id));
+    }
+
+    [Fact]
     public async Task AuditEntries_IncludeActorInformation()
     {
         await using var dbContext = CreateDbContext();
