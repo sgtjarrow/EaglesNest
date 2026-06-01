@@ -53,13 +53,21 @@ public static class ModelConfiguration
 
         modelBuilder.Entity<Member>(entity =>
         {
+            entity.Property(e => e.ApplicationUserId).HasMaxLength(450);
             entity.Property(e => e.FirstName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.MiddleName).HasMaxLength(100);
             entity.Property(e => e.LastName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Suffix).HasMaxLength(50);
             entity.Property(e => e.PreferredName).HasMaxLength(100);
+            entity.Property(e => e.RoadName).HasMaxLength(100);
             entity.Property(e => e.Email).HasMaxLength(256);
             entity.Property(e => e.PhoneNumber).HasMaxLength(50);
+            entity.Property(e => e.AddressLine1).HasMaxLength(200);
+            entity.Property(e => e.AddressLine2).HasMaxLength(200);
+            entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.State).HasMaxLength(50);
             entity.Property(e => e.PostalCode).HasMaxLength(20);
+            entity.HasIndex(e => e.ApplicationUserId);
             entity.HasOne(e => e.PrimaryChapter)
                 .WithMany()
                 .HasForeignKey(e => e.PrimaryChapterId)
@@ -68,6 +76,10 @@ public static class ModelConfiguration
 
         modelBuilder.Entity<MemberChapterAssignment>(entity =>
         {
+            entity.HasOne(e => e.Member)
+                .WithMany(e => e.ChapterAssignments)
+                .HasForeignKey(e => e.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(e => e.Chapter)
                 .WithMany()
                 .HasForeignKey(e => e.ChapterId)
@@ -78,6 +90,10 @@ public static class ModelConfiguration
         {
             entity.Property(e => e.Branch).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Rank).HasMaxLength(100);
+            entity.HasOne(e => e.Member)
+                .WithMany(e => e.MilitaryServiceRecords)
+                .HasForeignKey(e => e.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MemberChangeRequest>(entity =>

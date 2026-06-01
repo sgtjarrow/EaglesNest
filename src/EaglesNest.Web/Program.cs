@@ -6,6 +6,7 @@ using EaglesNest.Web.Components.Account;
 using EaglesNest.Web.Data;
 using EaglesNest.Web.Data.Seed;
 using EaglesNest.Web.Services.Chapters;
+using EaglesNest.Web.Services.Members;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +31,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(connectionString));
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddScoped<ChapterAdminService>();
+builder.Services.AddScoped<MemberAdminService>();
 builder.Services.Configure<DevelopmentSuperAdminOptions>(builder.Configuration.GetSection("DevelopmentSuperAdmin"));
 
 builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)

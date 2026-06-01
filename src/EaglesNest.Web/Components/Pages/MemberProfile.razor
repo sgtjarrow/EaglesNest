@@ -1,0 +1,148 @@
+@page "/member/profile"
+@rendermode InteractiveServer
+
+@using EaglesNest.Web.Services.Members
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize]
+
+@inject MemberAdminService MemberService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Member Profile</PageTitle>
+
+<h1>Member Profile</h1>
+
+@if (profile is null)
+{
+    <div class="alert alert-info">No member profile is linked to your login account yet.</div>
+}
+else
+{
+    <section class="profile-panel">
+        <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+            <div>
+                <h2 class="h4 mb-1">@profile.DisplayName</h2>
+                <div class="text-muted">@profile.LegalName</div>
+            </div>
+            <div class="text-end">
+                <span class="badge text-bg-light">@profile.ChapterAbbreviation</span>
+                <span class="badge @StatusBadgeClass(profile.Status)">@profile.Status</span>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <h3 class="h6">Contact</h3>
+                <dl class="row">
+                    <dt class="col-sm-4">Email</dt>
+                    <dd class="col-sm-8">@Display(profile.Email)</dd>
+                    <dt class="col-sm-4">Phone</dt>
+                    <dd class="col-sm-8">@Display(profile.PhoneNumber)</dd>
+                    <dt class="col-sm-4">Address</dt>
+                    <dd class="col-sm-8">@DisplayAddress()</dd>
+                </dl>
+            </div>
+            <div class="col-md-6">
+                <h3 class="h6">Membership</h3>
+                <dl class="row">
+                    <dt class="col-sm-4">Chapter</dt>
+                    <dd class="col-sm-8">@profile.ChapterAbbreviation - @profile.ChapterName</dd>
+                    <dt class="col-sm-4">Joined</dt>
+                    <dd class="col-sm-8">@(profile.JoinedOn?.ToString("yyyy-MM-dd") ?? "Not entered")</dd>
+                    <dt class="col-sm-4">DOB</dt>
+                    <dd class="col-sm-8">@(profile.DateOfBirth?.ToString("yyyy-MM-dd") ?? "Not entered")</dd>
+                </dl>
+            </div>
+        </div>
+
+        <hr />
+        <h3 class="h5">Military Service</h3>
+        @if (profile.MilitaryServiceRecords.Count == 0)
+        {
+            <p class="text-muted mb-0">No military service records entered.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Branch</th>
+                            <th>Rank/Rate</th>
+                            <th>Start</th>
+                            <th>End</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var record in profile.MilitaryServiceRecords)
+                        {
+                            <tr>
+                                <td>@record.Branch</td>
+                                <td>@Display(record.Rank)</td>
+                                <td>@(record.ServiceStartDate?.ToString("yyyy-MM-dd") ?? "")</td>
+                                <td>@(record.ServiceEndDate?.ToString("yyyy-MM-dd") ?? "")</td>
+                                <td>@record.ServiceNotes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+<style>
+    .profile-panel {
+        border: 1px solid #d8dee4;
+        border-radius: 8px;
+        padding: 1rem;
+        background: #fff;
+    }
+</style>
+
+@code {
+    private MemberProfileViewModel? profile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            profile = await MemberService.GetProfileForUserAsync(userId);
+        }
+    }
+
+    private string Display(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "Not entered" : value;
+    }
+
+    private string DisplayAddress()
+    {
+        if (profile is null)
+        {
+            return "Not entered";
+        }
+
+        var parts = new[] { profile.AddressLine1, profile.AddressLine2, profile.City, profile.State, profile.PostalCode }
+            .Where(part => !string.IsNullOrWhiteSpace(part));
+        var address = string.Join(", ", parts);
+        return string.IsNullOrWhiteSpace(address) ? "Not entered" : address;
+    }
+
+    private static string StatusBadgeClass(MemberStatus status)
+    {
+        return status switch
+        {
+            MemberStatus.Active => "text-bg-success",
+            MemberStatus.Prospect or MemberStatus.Probationary => "text-bg-info",
+            MemberStatus.Suspended => "text-bg-warning",
+            MemberStatus.Deceased => "text-bg-dark",
+            MemberStatus.Resigned or MemberStatus.Expelled or MemberStatus.Inactive => "text-bg-secondary",
+            _ => "text-bg-light"
+        };
+    }
+}

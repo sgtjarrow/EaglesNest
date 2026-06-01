@@ -56,8 +56,11 @@ public class Member
     public Guid Id { get; set; }
     public string? ApplicationUserId { get; set; }
     public string FirstName { get; set; } = string.Empty;
+    public string? MiddleName { get; set; }
     public string LastName { get; set; } = string.Empty;
+    public string? Suffix { get; set; }
     public string? PreferredName { get; set; }
+    public string? RoadName { get; set; }
     public string? Email { get; set; }
     public string? PhoneNumber { get; set; }
     public string? AddressLine1 { get; set; }

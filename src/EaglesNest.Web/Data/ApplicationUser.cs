@@ -4,7 +4,6 @@ namespace EaglesNest.Web.Data;
 
 public class ApplicationUser : IdentityUser
 {
-    public Guid? MemberId { get; set; }
     public bool IsLoginDisabled { get; set; }
     public string? LoginDisabledReason { get; set; }
 }

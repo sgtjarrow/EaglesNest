@@ -8,5 +8,6 @@ public enum MemberStatus
     Inactive = 4,
     Suspended = 5,
     Resigned = 6,
-    DeceasedLegacy = 7
+    Expelled = 7,
+    Deceased = 8
 }

@@ -1,6 +1,10 @@
 @implements IDisposable
 
+@using EaglesNest.Web.Services.Members
+
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject MemberAdminService MemberService
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -46,11 +50,27 @@
                         <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Chapters
                     </NavLink>
                 </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="admin/members">
+                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Members
+                    </NavLink>
+                </div>
             </Authorized>
         </AuthorizeView>
 
         <AuthorizeView>
             <Authorized>
+                <div class="nav-item px-3 mt-2 text-uppercase text-light opacity-75 small">
+                    Member Profile
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="member/profile">
+                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @(memberProfileLabel ?? "Member Profile")
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3 mt-2 text-uppercase text-light opacity-75 small">
+                    Account Profile
+                </div>
                 <div class="nav-item px-3">
                     <NavLink class="nav-link" href="Account/Manage">
                         <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> @context.User.Identity?.Name
@@ -84,11 +104,19 @@
 
 @code {
     private string? currentUrl;
+    private string? memberProfileLabel;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
         NavigationManager.LocationChanged += OnLocationChanged;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrWhiteSpace(userId))
+        {
+            memberProfileLabel = await MemberService.GetMemberProfileLabelAsync(userId);
+        }
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
