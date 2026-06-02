@@ -219,6 +219,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
     public async Task<MemberSaveResult> CreateAsync(MemberEditModel input, MemberActor actor)
     {
+        dbContext.ChangeTracker.Clear();
         Normalize(input);
         var validation = await ValidateAsync(input, null);
         if (validation.Count > 0)
@@ -283,6 +284,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
     public async Task<MemberSaveResult> UpdateAsync(Guid id, MemberEditModel input, MemberActor actor)
     {
+        dbContext.ChangeTracker.Clear();
         Normalize(input);
         var member = await dbContext.Members
             .Include(existing => existing.MilitaryServiceRecords)
@@ -319,7 +321,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             await TransferPrimaryChapterAsync(member, input.ChapterEffectiveDate, actor, originalChapterId);
         }
 
-        var militaryChanges = ReplaceMilitaryServiceRecords(member, input.MilitaryServiceRecords);
+        var militaryChanges = ReplaceMilitaryServiceRecords(dbContext, member, input.MilitaryServiceRecords);
 
         if (changes.Count > 0)
         {
@@ -488,7 +490,10 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         member.Notes = input.Notes;
     }
 
-    private static MilitaryServiceChangeCount ReplaceMilitaryServiceRecords(Member member, List<MilitaryServiceEditModel> serviceRecords)
+    private static MilitaryServiceChangeCount ReplaceMilitaryServiceRecords(
+        ApplicationDbContext dbContext,
+        Member member,
+        List<MilitaryServiceEditModel> serviceRecords)
     {
         var existingById = member.MilitaryServiceRecords.ToDictionary(record => record.Id);
         var inputIds = serviceRecords.Where(record => record.Id is not null).Select(record => record.Id!.Value).ToHashSet();
@@ -502,12 +507,14 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             member.MilitaryServiceRecords.Remove(record);
         }
 
+        dbContext.MilitaryServiceRecords.RemoveRange(recordsToRemove);
+
         foreach (var serviceRecord in serviceRecords)
         {
             if (serviceRecord.Id is null)
             {
                 added++;
-                member.MilitaryServiceRecords.Add(new MilitaryServiceRecord
+                dbContext.MilitaryServiceRecords.Add(new MilitaryServiceRecord
                 {
                     Id = Guid.NewGuid(),
                     MemberId = member.Id,
@@ -523,9 +530,9 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             if (!existingById.TryGetValue(serviceRecord.Id.Value, out var existing))
             {
                 added++;
-                member.MilitaryServiceRecords.Add(new MilitaryServiceRecord
+                dbContext.MilitaryServiceRecords.Add(new MilitaryServiceRecord
                 {
-                    Id = serviceRecord.Id.Value,
+                    Id = Guid.NewGuid(),
                     MemberId = member.Id,
                     Branch = serviceRecord.Branch,
                     Rank = serviceRecord.Rank,

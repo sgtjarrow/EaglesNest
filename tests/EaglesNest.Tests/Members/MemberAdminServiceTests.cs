@@ -177,6 +177,31 @@ public class MemberAdminServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_WithUnknownMilitaryServiceId_TreatsRecordAsNew()
+    {
+        await using var dbContext = CreateDbContext();
+        var (_, chapter, _) = AddChapterSetup(dbContext);
+        await dbContext.SaveChangesAsync();
+        var service = new MemberAdminService(dbContext);
+        var created = await service.CreateAsync(NewMember("John", "Smith", "Hammer", chapter.Id), TestActor);
+        var input = (await service.GetMemberAsync(created.MemberId!.Value))!;
+        var clientGeneratedId = Guid.NewGuid();
+        input.MilitaryServiceRecords.Add(new MilitaryServiceEditModel
+        {
+            Id = clientGeneratedId,
+            Branch = "Army",
+            Rank = "Sergeant"
+        });
+
+        var result = await service.UpdateAsync(created.MemberId.Value, input, TestActor);
+
+        Assert.True(result.Succeeded);
+        var record = await dbContext.MilitaryServiceRecords.SingleAsync(record => record.MemberId == created.MemberId);
+        Assert.NotEqual(clientGeneratedId, record.Id);
+        Assert.Equal("Army", record.Branch);
+    }
+
+    [Fact]
     public async Task CreateAsync_RejectsLoginLinkedToAnotherMember()
     {
         await using var dbContext = CreateDbContext();
