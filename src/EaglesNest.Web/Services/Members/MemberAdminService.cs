@@ -629,7 +629,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
         foreach (var serviceRecord in input.MilitaryServiceRecords)
         {
-            serviceRecord.Branch = ToTitleCase(serviceRecord.Branch.Trim());
+            serviceRecord.Branch = NormalizeName(serviceRecord.Branch) ?? string.Empty;
             serviceRecord.Rank = NormalizeOptional(serviceRecord.Rank);
             serviceRecord.ServiceNotes = NormalizeOptional(serviceRecord.ServiceNotes);
         }
