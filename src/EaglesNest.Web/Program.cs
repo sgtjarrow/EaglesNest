@@ -7,6 +7,8 @@ using EaglesNest.Web.Data;
 using EaglesNest.Web.Data.Seed;
 using EaglesNest.Web.Services.Chapters;
 using EaglesNest.Web.Services.Members;
+using EaglesNest.Web.Services.Permissions;
+using EaglesNest.Web.Services.Roles;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +37,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 builder.Services.AddScoped<ChapterAdminService>();
 builder.Services.AddScoped<MemberAdminService>();
+builder.Services.AddScoped<OfficerPermissionService>();
+builder.Services.AddScoped<RoleAdminService>();
 builder.Services.Configure<DevelopmentSuperAdminOptions>(builder.Configuration.GetSection("DevelopmentSuperAdmin"));
 
 builder.Services.AddIdentityCore<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)

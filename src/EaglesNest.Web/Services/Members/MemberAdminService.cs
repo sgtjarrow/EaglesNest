@@ -18,7 +18,12 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         MemberStatus.Suspended
     ];
 
-    public async Task<IReadOnlyList<MemberListItem>> GetMembersAsync(string? search, Guid? chapterId, MemberStatus? status)
+    public async Task<IReadOnlyList<MemberListItem>> GetMembersAsync(
+        string? search,
+        Guid? chapterId,
+        MemberStatus? status,
+        IReadOnlySet<Guid>? allowedChapterIds = null,
+        bool allowAllChapters = true)
     {
         return await UseDbContextAsync(async () =>
         {
@@ -30,6 +35,15 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             if (chapterId is not null)
             {
                 query = query.Where(member => member.PrimaryChapterId == chapterId);
+            }
+            else if (!allowAllChapters)
+            {
+                if (allowedChapterIds is null || allowedChapterIds.Count == 0)
+                {
+                    return [];
+                }
+
+                query = query.Where(member => allowedChapterIds.Contains(member.PrimaryChapterId));
             }
 
             if (status is not null)
@@ -178,15 +192,16 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         {
             var chapters = await dbContext.OrganizationUnits
                 .AsNoTracking()
-                .Where(unit => unit.Level == OrganizationLevel.LocalChapter &&
+                .Where(unit => (unit.Level == OrganizationLevel.National ||
+                                unit.Level == OrganizationLevel.LocalChapter) &&
                                unit.Status == OrganizationStatus.Open)
                 .Select(unit => new
                 {
                     unit.Id,
                     unit.Abbreviation,
                     unit.Name,
-                    StateName = unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Name,
-                    StateAbbreviation = unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Abbreviation
+                    StateName = unit.Level == OrganizationLevel.National ? "National" : unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Name,
+                    StateAbbreviation = unit.Level == OrganizationLevel.National ? "NAT" : unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Abbreviation
                 })
                 .ToListAsync();
 
@@ -457,9 +472,10 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 .AsNoTracking()
                 .SingleOrDefaultAsync(unit => unit.Id == input.PrimaryChapterId);
 
-            if (chapter is null || chapter.Level != OrganizationLevel.LocalChapter)
+            if (chapter is null ||
+                (chapter.Level != OrganizationLevel.LocalChapter && chapter.Level != OrganizationLevel.National))
             {
-                errors.Add("Primary chapter must be a local chapter.");
+                errors.Add("Primary chapter must be National or a local chapter.");
             }
         }
 
@@ -878,14 +894,21 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
     private static string ChapterSortGroup(string abbreviation, string? stateName)
     {
-        return IsEternalChapter(abbreviation)
-            ? "0000"
+        if (IsEternalChapter(abbreviation))
+        {
+            return "0000";
+        }
+
+        return string.Equals(abbreviation, "NAT", StringComparison.OrdinalIgnoreCase)
+            ? "0001"
             : $"1000-{stateName ?? string.Empty}";
     }
 
     private static string ChapterSortName(string abbreviation, string name)
     {
-        return IsEternalChapter(abbreviation) ? "0000" : name;
+        return IsEternalChapter(abbreviation) || string.Equals(abbreviation, "NAT", StringComparison.OrdinalIgnoreCase)
+            ? "0000"
+            : name;
     }
 
     private static bool IsEternalChapter(string? abbreviation)
@@ -1010,8 +1033,33 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             AuditAction.MilitaryServiceUpdated => "Military service record updated.",
             AuditAction.MilitaryServiceRemoved => "Military service record removed.",
             AuditAction.MemberStatusChanged => BuildStatusChangedSummary(detailsJson),
+            AuditAction.RoleAssignmentCreated => BuildRoleAssignmentSummary("Officer role assigned", detailsJson),
+            AuditAction.RoleAssignmentRemoved => BuildRoleAssignmentSummary("Officer role removed", detailsJson),
+            AuditAction.RoleAssignmentExpired => BuildRoleAssignmentSummary("Officer role expired", detailsJson),
             _ => action.ToString()
         };
+    }
+
+    private static string BuildRoleAssignmentSummary(string prefix, string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return $"{prefix}.";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            var position = GetJsonString(document.RootElement, "Position");
+            var chapter = GetJsonString(document.RootElement, "Chapter");
+            return string.IsNullOrWhiteSpace(position)
+                ? $"{prefix}."
+                : $"{prefix}: {position}" + (string.IsNullOrWhiteSpace(chapter) ? "." : $" for {chapter}.");
+        }
+        catch (JsonException)
+        {
+            return $"{prefix}.";
+        }
     }
 
     private static string BuildStatusChangedSummary(string? detailsJson)

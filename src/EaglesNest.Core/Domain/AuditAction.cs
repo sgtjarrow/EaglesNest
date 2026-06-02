@@ -22,5 +22,8 @@ public enum AuditAction
     MilitaryServiceAdded = 18,
     MilitaryServiceUpdated = 19,
     MilitaryServiceRemoved = 20,
-    MemberStatusChanged = 21
+    MemberStatusChanged = 21,
+    RoleAssignmentCreated = 22,
+    RoleAssignmentRemoved = 23,
+    RoleAssignmentExpired = 24
 }

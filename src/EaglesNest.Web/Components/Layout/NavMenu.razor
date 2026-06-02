@@ -1,10 +1,12 @@
 @implements IDisposable
 
 @using EaglesNest.Web.Services.Members
+@using EaglesNest.Web.Services.Permissions
 
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject MemberAdminService MemberService
+@inject OfficerPermissionService PermissionService
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -24,19 +26,36 @@
 
         <AuthorizeView>
             <Authorized>
-                <div class="nav-item px-3 mt-2 text-uppercase text-light opacity-75 small">
-                    Admin
-                </div>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="admin/chapters">
-                        <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Chapters
-                    </NavLink>
-                </div>
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link" href="admin/members">
-                        <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Members
-                    </NavLink>
-                </div>
+                @if (permissions?.CanAccessAdmin == true)
+                {
+                    <div class="nav-item px-3 mt-2 text-uppercase text-light opacity-75 small">
+                        Admin
+                    </div>
+                    @if (permissions.CanEditAnyChapter)
+                    {
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="admin/chapters">
+                                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Chapters
+                            </NavLink>
+                        </div>
+                    }
+                    @if (permissions.CanViewMembers)
+                    {
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="admin/members">
+                                <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Members
+                            </NavLink>
+                        </div>
+                    }
+                    @if (permissions.CanManageRoles)
+                    {
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="admin/roles">
+                                <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Roles
+                            </NavLink>
+                        </div>
+                    }
+                }
             </Authorized>
         </AuthorizeView>
 
@@ -87,6 +106,7 @@
 @code {
     private string? currentUrl;
     private string? memberProfileLabel;
+    private OfficerPermissionContext? permissions;
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,6 +118,7 @@
         if (!string.IsNullOrWhiteSpace(userId))
         {
             memberProfileLabel = await MemberService.GetMemberProfileLabelAsync(userId);
+            permissions = await PermissionService.GetPermissionsAsync(userId);
         }
     }
 

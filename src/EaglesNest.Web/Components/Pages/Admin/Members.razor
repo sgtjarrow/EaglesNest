@@ -2,11 +2,13 @@
 @rendermode InteractiveServer
 
 @using EaglesNest.Web.Services.Members
+@using EaglesNest.Web.Services.Permissions
 @using Microsoft.AspNetCore.Authorization
 
 @attribute [Authorize]
 
 @inject MemberAdminService MemberService
+@inject OfficerPermissionService PermissionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IWebHostEnvironment Environment
 
@@ -22,13 +24,26 @@
     </div>
 }
 
+@if (permissions is null)
+{
+    <p>Loading...</p>
+}
+else if (!permissions.CanViewMembers)
+{
+    <div class="alert alert-warning">You do not have permission to view member administration.</div>
+}
+else
+{
 <div class="row g-4">
     <section class="col-xl-5">
         <div class="admin-panel">
             <div class="d-flex gap-2 mb-3">
                 <input class="form-control" placeholder="Search members" @bind="searchText" @bind:event="oninput" />
                 <button type="button" class="btn btn-outline-secondary" @onclick="LoadAsync">Search</button>
-                <button type="button" class="btn btn-primary" @onclick="AddMember">Add</button>
+                @if (permissions.CanEditMembers)
+                {
+                    <button type="button" class="btn btn-primary" @onclick="AddMember">Add</button>
+                }
             </div>
             <div class="row g-2 mb-3">
                 <div class="col-md-7">
@@ -105,6 +120,7 @@
                     }
                 </ul>
 
+                <fieldset disabled="@(!CanEditCurrentMember)">
                 <div class="tab-panel">
                     @if (activeTab == MemberEditorTab.Profile)
                     {
@@ -319,7 +335,10 @@
                     else if (activeTab == MemberEditorTab.MilitaryService)
                     {
                         <div class="d-flex justify-content-end mb-3">
-                            <button type="button" class="btn btn-outline-primary" @onclick="AddMilitaryService">Add Service</button>
+                            @if (CanEditCurrentMember)
+                            {
+                                <button type="button" class="btn btn-outline-primary" @onclick="AddMilitaryService">Add Service</button>
+                            }
                         </div>
                         @if (editModel.MilitaryServiceRecords.Count == 0)
                         {
@@ -374,7 +393,10 @@
                                             </InputSelect>
                                         </div>
                                         <div class="col-md-2">
-                                            <button type="button" class="btn btn-outline-danger w-100" @onclick="() => RemoveMilitaryService(record)">Remove</button>
+                                            @if (CanEditCurrentMember)
+                                            {
+                                                <button type="button" class="btn btn-outline-danger w-100" @onclick="() => RemoveMilitaryService(record)">Remove</button>
+                                            }
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label">Notes</label>
@@ -419,15 +441,20 @@
                         }
                     }
                 </div>
+                </fieldset>
 
                 <div class="d-flex flex-wrap gap-2 mt-3">
-                    <button type="submit" class="btn btn-primary">Save</button>
-                    <button type="button" class="btn btn-outline-secondary" @onclick="CancelEditAsync">Cancel</button>
+                    @if (CanEditCurrentMember)
+                    {
+                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CancelEditAsync">Cancel</button>
+                    }
                 </div>
             </EditForm>
         </div>
     </section>
 </div>
+}
 
 <style>
     .admin-panel {
@@ -496,6 +523,7 @@
     private IReadOnlyList<MemberChapterAssignmentItem> chapterAssignments = [];
     private IReadOnlyList<MemberStatusHistoryItem> statusHistory = [];
     private IReadOnlyList<MemberAuditLogItem> auditLogs = [];
+    private OfficerPermissionContext? permissions;
     private MemberEditModel editModel = new();
     private Guid? selectedMemberId;
     private Guid? filterChapterId;
@@ -505,6 +533,7 @@
     private string statusClass = "alert-info";
     private string editorTitle = "Add Member";
     private MemberEditorTab activeTab = MemberEditorTab.Profile;
+    private bool CanEditCurrentMember => permissions?.CanEditMemberInChapter(editModel.PrimaryChapterId ?? Guid.Empty) == true;
     private IEnumerable<ChapterOption> EternalChapterOptions => chapterOptions.Where(chapter => IsEternalChapter(chapter.Abbreviation));
     private IEnumerable<IGrouping<string, ChapterOption>> ChapterOptionGroups => chapterOptions
         .Where(chapter => !IsEternalChapter(chapter.Abbreviation))
@@ -513,15 +542,38 @@
 
     protected override async Task OnInitializedAsync()
     {
-        chapterOptions = await MemberService.GetChapterOptionsAsync();
+        permissions = await GetPermissionsAsync();
+        if (!permissions.CanViewMembers)
+        {
+            return;
+        }
+
+        var allChapterOptions = await MemberService.GetChapterOptionsAsync();
+        chapterOptions = permissions.CanViewAllMembers
+            ? allChapterOptions
+            : allChapterOptions.Where(chapter => permissions.CanViewMemberInChapter(chapter.Id)).ToList();
         linkedAccountOptions = await MemberService.GetLinkableAccountsAsync(null);
-        AddMember();
+        if (permissions.CanEditMembers)
+        {
+            AddMember();
+        }
         await LoadAsync();
     }
 
     private async Task LoadAsync()
     {
-        members = await MemberService.GetMembersAsync(searchText, filterChapterId, filterStatus);
+        if (permissions is null || !permissions.CanViewMembers)
+        {
+            members = [];
+            return;
+        }
+
+        members = await MemberService.GetMembersAsync(
+            searchText,
+            filterChapterId,
+            filterStatus,
+            permissions.ViewMemberChapterIds,
+            permissions.CanViewAllMembers);
     }
 
     private async Task SelectMemberAsync(Guid id)
@@ -530,6 +582,12 @@
         if (member is null)
         {
             ShowError("Member was not found.");
+            return;
+        }
+
+        if (permissions?.CanViewMemberInChapter(member.PrimaryChapterId ?? Guid.Empty) != true)
+        {
+            ShowError("You do not have permission to view that member.");
             return;
         }
 
@@ -545,10 +603,18 @@
 
     private void AddMember()
     {
+        if (permissions?.CanEditMembers != true)
+        {
+            return;
+        }
+
         selectedMemberId = null;
+        var defaultChapterId = chapterOptions
+            .FirstOrDefault(chapter => permissions.CanEditMemberInChapter(chapter.Id) && !IsEternalChapter(chapter.Abbreviation))?.Id
+            ?? chapterOptions.FirstOrDefault(chapter => permissions.CanEditMemberInChapter(chapter.Id))?.Id;
         editModel = new MemberEditModel
         {
-            PrimaryChapterId = chapterOptions.FirstOrDefault(chapter => !IsEternalChapter(chapter.Abbreviation))?.Id ?? chapterOptions.FirstOrDefault()?.Id,
+            PrimaryChapterId = defaultChapterId,
             ChapterEffectiveDate = DateOnly.FromDateTime(DateTime.Today),
             StatusEffectiveDate = DateOnly.FromDateTime(DateTime.Today)
         };
@@ -564,6 +630,12 @@
     {
         try
         {
+            if (!CanEditCurrentMember)
+            {
+                ShowError("You do not have permission to edit that member.");
+                return;
+            }
+
             var actor = await GetCurrentActorAsync();
             var result = editModel.Id is Guid id
                 ? await MemberService.UpdateAsync(id, editModel, actor)
@@ -634,6 +706,13 @@
         return new MemberActor(userId, actorName, "User");
     }
 
+    private async Task<OfficerPermissionContext> GetPermissionsAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return await PermissionService.GetPermissionsAsync(userId);
+    }
+
     private static string DisplayTab(MemberEditorTab tab)
     {
         return tab switch
@@ -653,6 +732,9 @@
             AuditAction.MilitaryServiceUpdated => "Military Service Updated",
             AuditAction.MilitaryServiceRemoved => "Military Service Removed",
             AuditAction.MemberStatusChanged => "Status Changed",
+            AuditAction.RoleAssignmentCreated => "Officer Role Assigned",
+            AuditAction.RoleAssignmentRemoved => "Officer Role Removed",
+            AuditAction.RoleAssignmentExpired => "Officer Role Expired",
             _ => action.ToString()
         };
     }

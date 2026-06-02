@@ -4,16 +4,19 @@ using EaglesNest.Web.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace EaglesNest.Web.Migrations
+namespace EaglesNest.Web.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260602225234_MemberBasedOfficerRoles")]
+    partial class MemberBasedOfficerRoles
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -69,7 +72,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("OrganizationUnitId");
 
-                    b.ToTable("AuditLogs", (string)null);
+                    b.ToTable("AuditLogs");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.ChapterSuspension", b =>
@@ -111,7 +114,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("OrganizationUnitId");
 
-                    b.ToTable("ChapterSuspensions", (string)null);
+                    b.ToTable("ChapterSuspensions");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.FinancialAssessment", b =>
@@ -153,7 +156,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("MemberId");
 
-                    b.ToTable("FinancialAssessments", (string)null);
+                    b.ToTable("FinancialAssessments");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.FinancialPayment", b =>
@@ -187,7 +190,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("FinancialAssessmentId");
 
-                    b.ToTable("FinancialPayments", (string)null);
+                    b.ToTable("FinancialPayments");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.ImportBatch", b =>
@@ -219,7 +222,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("OrganizationUnitId");
 
-                    b.ToTable("ImportBatches", (string)null);
+                    b.ToTable("ImportBatches");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.ImportBatchRow", b =>
@@ -248,7 +251,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("ImportBatchId");
 
-                    b.ToTable("ImportBatchRows", (string)null);
+                    b.ToTable("ImportBatchRows");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.Member", b =>
@@ -350,7 +353,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("PrimaryChapterId");
 
-                    b.ToTable("Members", (string)null);
+                    b.ToTable("Members");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.MemberChangeRequest", b =>
@@ -391,7 +394,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("MemberId");
 
-                    b.ToTable("MemberChangeRequests", (string)null);
+                    b.ToTable("MemberChangeRequests");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.MemberChapterAssignment", b =>
@@ -421,7 +424,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("MemberId");
 
-                    b.ToTable("MemberChapterAssignments", (string)null);
+                    b.ToTable("MemberChapterAssignments");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.MemberStatusHistory", b =>
@@ -464,7 +467,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("MemberId");
 
-                    b.ToTable("MemberStatusHistory", (string)null);
+                    b.ToTable("MemberStatusHistory");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.MilitaryServiceRecord", b =>
@@ -506,7 +509,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("MemberId");
 
-                    b.ToTable("MilitaryServiceRecords", (string)null);
+                    b.ToTable("MilitaryServiceRecords");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.OrganizationUnit", b =>
@@ -575,7 +578,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("ParentOrganizationUnitId");
 
-                    b.ToTable("OrganizationUnits", (string)null);
+                    b.ToTable("OrganizationUnits");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.RideAttendance", b =>
@@ -607,7 +610,7 @@ namespace EaglesNest.Web.Migrations
                     b.HasIndex("RideEventId", "MemberId")
                         .IsUnique();
 
-                    b.ToTable("RideAttendance", (string)null);
+                    b.ToTable("RideAttendance");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.RideEvent", b =>
@@ -641,7 +644,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("ChapterId");
 
-                    b.ToTable("RideEvents", (string)null);
+                    b.ToTable("RideEvents");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.RoleAssignment", b =>
@@ -672,7 +675,7 @@ namespace EaglesNest.Web.Migrations
                     b.HasIndex("MemberId", "OrganizationUnitId", "Position")
                         .IsUnique();
 
-                    b.ToTable("RoleAssignments", (string)null);
+                    b.ToTable("RoleAssignments");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.StateChapterAssignment", b =>
@@ -719,7 +722,7 @@ namespace EaglesNest.Web.Migrations
 
                     b.HasIndex("StateOrganizationUnitId");
 
-                    b.ToTable("StateChapterAssignments", (string)null);
+                    b.ToTable("StateChapterAssignments");
                 });
 
             modelBuilder.Entity("EaglesNest.Web.Data.ApplicationUser", b =>

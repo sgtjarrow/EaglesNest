@@ -154,11 +154,15 @@ public static class ModelConfiguration
 
         modelBuilder.Entity<RoleAssignment>(entity =>
         {
-            entity.Property(e => e.ApplicationUserId).HasMaxLength(450).IsRequired();
+            entity.HasOne(e => e.Member)
+                .WithMany()
+                .HasForeignKey(e => e.MemberId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(e => e.OrganizationUnit)
                 .WithMany()
                 .HasForeignKey(e => e.OrganizationUnitId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => new { e.MemberId, e.OrganizationUnitId, e.Position }).IsUnique();
         });
 
         modelBuilder.Entity<AuditLog>(entity =>

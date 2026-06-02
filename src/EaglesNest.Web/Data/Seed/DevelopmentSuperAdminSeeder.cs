@@ -61,20 +61,65 @@ public static class DevelopmentSuperAdminSeeder
             await userManager.UpdateAsync(user);
         }
 
+        var national = await dbContext.OrganizationUnits
+            .SingleOrDefaultAsync(unit => unit.Level == OrganizationLevel.National);
+
+        if (national is null)
+        {
+            throw new InvalidOperationException("Development super-admin member could not be created because National was not found.");
+        }
+
+        var member = await dbContext.Members
+            .SingleOrDefaultAsync(member => member.ApplicationUserId == user.Id);
+
+        if (member is null)
+        {
+            member = new Member
+            {
+                Id = Guid.NewGuid(),
+                ApplicationUserId = user.Id,
+                FirstName = "Super",
+                LastName = "Admin",
+                RoadName = "super_eagle",
+                Status = MemberStatus.PatchHolder,
+                PrimaryChapterId = national.Id
+            };
+
+            dbContext.Members.Add(member);
+            dbContext.MemberChapterAssignments.Add(new MemberChapterAssignment
+            {
+                Id = Guid.NewGuid(),
+                MemberId = member.Id,
+                ChapterId = national.Id,
+                StartDate = DateOnly.FromDateTime(DateTime.Today),
+                IsPrimary = true
+            });
+            dbContext.MemberStatusHistory.Add(new MemberStatusHistory
+            {
+                Id = Guid.NewGuid(),
+                MemberId = member.Id,
+                Status = member.Status,
+                EffectiveDate = DateOnly.FromDateTime(DateTime.Today),
+                Notes = "Development super-admin bootstrap.",
+                ActorName = "DevelopmentSuperAdminSeeder",
+                ActorSource = "DevelopmentSeeder"
+            });
+        }
+
         var hasSystemAdminAssignment = await dbContext.RoleAssignments
-            .AnyAsync(assignment => assignment.ApplicationUserId == user.Id && assignment.Position == OfficerPosition.SystemAdmin);
+            .AnyAsync(assignment => assignment.MemberId == member.Id && assignment.Position == OfficerPosition.SystemAdmin);
 
         if (!hasSystemAdminAssignment)
         {
             dbContext.RoleAssignments.Add(new RoleAssignment
             {
                 Id = Guid.NewGuid(),
-                ApplicationUserId = user.Id,
-                OrganizationUnitId = null,
+                MemberId = member.Id,
+                OrganizationUnitId = national.Id,
                 Position = OfficerPosition.SystemAdmin
             });
-
-            await dbContext.SaveChangesAsync();
         }
+
+        await dbContext.SaveChangesAsync();
     }
 }

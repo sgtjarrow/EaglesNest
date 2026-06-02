@@ -3,17 +3,29 @@
 
 @using EaglesNest.Core.Domain
 @using EaglesNest.Web.Services.Chapters
+@using EaglesNest.Web.Services.Permissions
 @using Microsoft.AspNetCore.Authorization
 
 @attribute [Authorize]
 
 @inject ChapterAdminService ChapterService
+@inject OfficerPermissionService PermissionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Chapters</PageTitle>
 
 <h1>Chapters</h1>
 
+@if (permissions is null)
+{
+    <p>Loading...</p>
+}
+else if (!permissions.CanEditAnyChapter)
+{
+    <div class="alert alert-warning">You do not have permission to edit chapter administration.</div>
+}
+else
+{
 <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end mb-3">
     <div class="form-check form-switch">
         <input id="include-unavailable"
@@ -84,9 +96,12 @@
 
             @if (IsExistingStateGrouping)
             {
-                <div class="d-flex justify-content-end mb-3">
-                    <button type="button" class="btn btn-outline-primary" @onclick="AddChapter">Add Chapter</button>
-                </div>
+                @if (CanAddChapterUnderSelectedState)
+                {
+                    <div class="d-flex justify-content-end mb-3">
+                        <button type="button" class="btn btn-outline-primary" @onclick="AddChapter">Add Chapter</button>
+                    </div>
+                }
                 <dl class="row mb-0">
                     <dt class="col-sm-4">Name</dt>
                     <dd class="col-sm-8">@editModel.Name</dd>
@@ -158,8 +173,11 @@
                     </div>
 
                     <div class="d-flex flex-wrap gap-2 mt-4">
-                        <button type="submit" class="btn btn-primary">Save</button>
-                        @if (editModel.Id is not null && editModel.Level == OrganizationLevel.National)
+                        @if (CanEditSelectedChapter)
+                        {
+                            <button type="submit" class="btn btn-primary">Save</button>
+                        }
+                        @if (editModel.Id is not null && editModel.Level == OrganizationLevel.National && permissions?.CanEditAllChapters == true)
                         {
                             <button type="button" class="btn btn-outline-primary" @onclick="AddState">Add State</button>
                         }
@@ -272,7 +290,10 @@
                                 <InputText id="state-chapter-notes" class="form-control" @bind-Value="stateChapterNotes" />
                             </div>
                             <div class="col-12">
-                                <button type="button" class="btn btn-outline-primary" @onclick="AssignStateChapterAsync">Assign State Chapter</button>
+                                @if (permissions?.CanEditAllChapters == true)
+                                {
+                                    <button type="button" class="btn btn-outline-primary" @onclick="AssignStateChapterAsync">Assign State Chapter</button>
+                                }
                             </div>
                         </div>
 
@@ -343,6 +364,7 @@
         </div>
     </section>
 </div>
+}
 
 <style>
     .admin-panel {
@@ -421,6 +443,7 @@
     private IReadOnlyList<ChapterAuditLogItem> auditLogs = [];
     private List<ChapterDisplayRow> displayRows = [];
     private ChapterEditModel editModel = new();
+    private OfficerPermissionContext? permissions;
     private ChapterSuspension? currentSuspension;
     private Guid? selectedChapterId;
     private Guid? selectedStateChapterId;
@@ -460,23 +483,40 @@
     private bool ShowCityStateFields => editModel.Level == OrganizationLevel.LocalChapter && !IsEternalChapter;
     private bool ShowMailingFields => (editModel.Level == OrganizationLevel.National || editModel.Level == OrganizationLevel.LocalChapter) && !IsEternalChapter;
     private bool CanCloseOrReopenSelected => editModel.Id is not null &&
+                                             permissions?.CanEditChapter(editModel.Id.Value) == true &&
                                              editModel.Level != OrganizationLevel.National &&
                                              !IsEternalChapter;
     private bool CanSuspendSelected => editModel.Id is not null &&
+                                       permissions?.CanEditChapter(editModel.Id.Value) == true &&
                                        editModel.Level == OrganizationLevel.LocalChapter &&
                                        editModel.Status == OrganizationStatus.Open &&
                                        !IsEternalChapter;
     private bool CanEndSuspensionSelected => editModel.Id is not null &&
+                                             permissions?.CanEditChapter(editModel.Id.Value) == true &&
                                              editModel.Level == OrganizationLevel.LocalChapter &&
                                              editModel.Status == OrganizationStatus.Suspended &&
                                              !IsEternalChapter;
     private bool ShowStateAssignmentTab => editModel.Id is not null && editModel.Level == OrganizationLevel.State;
     private bool ShowSuspensionTab => currentSuspension is not null || CanSuspendSelected || CanEndSuspensionSelected;
+    private bool CanEditSelectedChapter => editModel.Id is Guid id
+        ? permissions?.CanEditChapter(id) == true
+        : editModel.Level == OrganizationLevel.State
+            ? permissions?.CanEditAllChapters == true
+            : editModel.ParentOrganizationUnitId is Guid parentId && permissions?.CanEditAllChapters == true;
+    private bool CanAddChapterUnderSelectedState => IsExistingStateGrouping && permissions?.CanEditAllChapters == true;
 
     protected override async Task OnInitializedAsync()
     {
+        permissions = await GetPermissionsAsync();
+        if (!permissions.CanEditAnyChapter)
+        {
+            return;
+        }
+
         await LoadAsync();
-        var first = hierarchy.FirstOrDefault();
+        var first = displayRows.FirstOrDefault(row => row.Item.Level == OrganizationLevel.LocalChapter && permissions.CanEditChapter(row.Item.Id))?.Item
+            ?? displayRows.FirstOrDefault(row => permissions.CanEditChapter(row.Item.Id))?.Item
+            ?? hierarchy.FirstOrDefault();
         if (first is not null)
         {
             await SelectChapter(first.Id);
@@ -552,6 +592,12 @@
             return;
         }
 
+        if (organization.Level != OrganizationLevel.State && permissions?.CanEditChapter(id) != true)
+        {
+            ShowError("You do not have permission to edit that chapter.");
+            return;
+        }
+
         selectedChapterId = id;
         editModel = organization;
         editorTitle = organization.Level == OrganizationLevel.State
@@ -583,6 +629,12 @@
 
     private void AddState()
     {
+        if (permissions?.CanEditAllChapters != true)
+        {
+            ShowError("You do not have permission to add States.");
+            return;
+        }
+
         var national = hierarchy.FirstOrDefault(item => item.Level == OrganizationLevel.National);
         selectedChapterId = null;
         editModel = new ChapterEditModel
@@ -609,6 +661,12 @@
             return;
         }
 
+        if (!CanAddChapterUnderSelectedState)
+        {
+            ShowError("You do not have permission to add chapters.");
+            return;
+        }
+
         selectedChapterId = null;
         editModel = new ChapterEditModel
         {
@@ -627,6 +685,12 @@
 
     private async Task SaveAsync()
     {
+        if (!CanEditSelectedChapter)
+        {
+            ShowError("You do not have permission to save that chapter.");
+            return;
+        }
+
         var actor = await GetCurrentActorAsync();
         var wasCreatingState = editModel.Id is null && editModel.Level == OrganizationLevel.State;
         var wasCreatingFirstChapter = editModel.Id is null &&
@@ -690,6 +754,12 @@
             return;
         }
 
+        if (permissions?.CanEditChapter(id) != true)
+        {
+            ShowError("You do not have permission to close that chapter.");
+            return;
+        }
+
         var result = await ChapterService.CloseAsync(id, await GetCurrentActorAsync());
         await HandleStatusResultAsync(result, "Chapter closed.");
     }
@@ -698,6 +768,12 @@
     {
         if (editModel.Id is not Guid id)
         {
+            return;
+        }
+
+        if (permissions?.CanEditChapter(id) != true)
+        {
+            ShowError("You do not have permission to reopen that chapter.");
             return;
         }
 
@@ -712,6 +788,12 @@
             return;
         }
 
+        if (permissions?.CanEditChapter(id) != true)
+        {
+            ShowError("You do not have permission to suspend that chapter.");
+            return;
+        }
+
         var result = await ChapterService.SuspendAsync(id, suspensionStart, suspensionEnd, suspensionNotes, await GetCurrentActorAsync());
         await HandleStatusResultAsync(result, "Chapter suspended.");
     }
@@ -720,6 +802,12 @@
     {
         if (editModel.Id is not Guid id)
         {
+            return;
+        }
+
+        if (permissions?.CanEditChapter(id) != true)
+        {
+            ShowError("You do not have permission to end that suspension.");
             return;
         }
 
@@ -732,6 +820,12 @@
         if (editModel.Id is not Guid stateId || selectedStateChapterId is not Guid chapterId)
         {
             ShowError("Select a chapter before assigning the acting State chapter.");
+            return;
+        }
+
+        if (permissions?.CanEditAllChapters != true)
+        {
+            ShowError("You do not have permission to assign acting State chapters.");
             return;
         }
 
@@ -812,6 +906,13 @@
         var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var actorName = user.Identity?.Name ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown User";
         return new ChapterActor(userId, actorName, "User");
+    }
+
+    private async Task<OfficerPermissionContext> GetPermissionsAsync()
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = state.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        return await PermissionService.GetPermissionsAsync(userId);
     }
 
     private static ChapterTreeItem? FindItem(IEnumerable<ChapterTreeItem> items, Guid? id)

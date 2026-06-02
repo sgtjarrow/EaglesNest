@@ -193,9 +193,10 @@ public class FinancialPayment
 public class RoleAssignment
 {
     public Guid Id { get; set; }
-    public string ApplicationUserId { get; set; } = string.Empty;
-    public Guid? OrganizationUnitId { get; set; }
-    public OrganizationUnit? OrganizationUnit { get; set; }
+    public Guid MemberId { get; set; }
+    public Member Member { get; set; } = null!;
+    public Guid OrganizationUnitId { get; set; }
+    public OrganizationUnit OrganizationUnit { get; set; } = null!;
     public OfficerPosition Position { get; set; }
     public DateTimeOffset AssignedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ExpiresAt { get; set; }

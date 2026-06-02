@@ -3,14 +3,12 @@ namespace EaglesNest.Core.Domain;
 public enum OfficerPosition
 {
     SystemAdmin = 1,
-    NationalViewerReporter = 2,
-    StateViewerReporter = 3,
-    ChapterPresident = 4,
-    ChapterVicePresident = 5,
-    ChapterTreasurer = 6,
-    ChapterSecretary = 7,
-    RoadCaptain = 8,
-    SergeantAtArms = 9,
-    MembershipOfficer = 10,
-    Member = 11
+    President = 2,
+    VicePresident = 3,
+    Treasurer = 4,
+    Secretary = 5,
+    SergeantAtArms = 6,
+    RoadCaptain = 7,
+    MasterSergeantAtArms = 8,
+    CyberIntel = 9
 }
