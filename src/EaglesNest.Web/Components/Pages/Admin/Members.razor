@@ -454,6 +454,7 @@
         border: 1px solid transparent;
         border-radius: 6px;
         background: transparent;
+        color: #c6b79b;
         text-align: left;
     }
 
@@ -461,6 +462,12 @@
     .member-row.selected {
         border-color: #0d6efd;
         background: #eef5ff;
+        color: #000;
+    }
+
+    .member-row:hover .text-muted,
+    .member-row.selected .text-muted {
+        color: #111 !important;
     }
 
     .tab-panel {

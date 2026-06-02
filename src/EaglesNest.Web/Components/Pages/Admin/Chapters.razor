@@ -369,6 +369,7 @@
         border: 1px solid transparent;
         border-radius: 6px;
         background: transparent;
+        color: #c6b79b;
         text-align: left;
     }
 
@@ -376,6 +377,7 @@
     .chapter-row.selected {
         border-color: #0d6efd;
         background: #eef5ff;
+        color: #000;
     }
 
     .chapter-row.unavailable {
@@ -387,8 +389,13 @@
     }
 
     .chapter-meta {
-        color: #6c757d;
+        color: #a99a80;
         font-size: .875rem;
+    }
+
+    .chapter-row:hover .chapter-meta,
+    .chapter-row.selected .chapter-meta {
+        color: #111;
     }
 
     .state-assignment {
