@@ -242,6 +242,34 @@ public class MemberAdminServiceTests
         Assert.Equal("Hammer", label);
     }
 
+    [Fact]
+    public async Task GetAuditLogsAsync_FormatsLinkedLoginAndPrimaryChapterChanges()
+    {
+        await using var dbContext = CreateDbContext();
+        var (state, chapter, _) = AddChapterSetup(dbContext);
+        var destinationChapter = AddOrganization(dbContext, "Jensen Beach", "FLA-4", OrganizationLevel.LocalChapter, state.Id);
+        var loginId = Guid.NewGuid().ToString();
+        dbContext.Users.Add(new ApplicationUser { Id = loginId, UserName = "wizard_login" });
+        await dbContext.SaveChangesAsync();
+        var service = new MemberAdminService(dbContext);
+        var created = await service.CreateAsync(NewMember("John", "Smith", "Hammer", chapter.Id), TestActor);
+        var edit = (await service.GetMemberAsync(created.MemberId!.Value))!;
+        edit.ApplicationUserId = loginId;
+        edit.PrimaryChapterId = destinationChapter.Id;
+
+        var result = await service.UpdateAsync(created.MemberId.Value, edit, TestActor);
+        var auditLogs = await service.GetAuditLogsAsync(created.MemberId.Value);
+
+        Assert.True(result.Succeeded);
+        var summary = auditLogs.Single(log => log.Action == AuditAction.MemberUpdated).Summary;
+        Assert.Contains("wizard_login", summary);
+        Assert.Contains("FLA-7", summary);
+        Assert.Contains("FLA-4", summary);
+        Assert.DoesNotContain(loginId, summary);
+        Assert.DoesNotContain(chapter.Id.ToString(), summary);
+        Assert.DoesNotContain(destinationChapter.Id.ToString(), summary);
+    }
+
     private static ApplicationDbContext CreateDbContext()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()

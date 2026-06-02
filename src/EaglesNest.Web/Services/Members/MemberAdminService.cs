@@ -8,6 +8,8 @@ namespace EaglesNest.Web.Services.Members;
 
 public class MemberAdminService(ApplicationDbContext dbContext)
 {
+    private readonly SemaphoreSlim dbContextGate = new(1, 1);
+
     private static readonly MemberStatus[] RoadNameConflictStatuses =
     [
         MemberStatus.Prospect,
@@ -19,45 +21,47 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
     public async Task<IReadOnlyList<MemberListItem>> GetMembersAsync(string? search, Guid? chapterId, MemberStatus? status)
     {
-        var query = dbContext.Members
-            .AsNoTracking()
-            .Include(member => member.PrimaryChapter)
-            .AsQueryable();
-
-        if (chapterId is not null)
+        return await UseDbContextAsync(async () =>
         {
-            query = query.Where(member => member.PrimaryChapterId == chapterId);
-        }
+            var query = dbContext.Members
+                .AsNoTracking()
+                .Include(member => member.PrimaryChapter)
+                .AsQueryable();
 
-        if (status is not null)
-        {
-            query = query.Where(member => member.Status == status);
-        }
+            if (chapterId is not null)
+            {
+                query = query.Where(member => member.PrimaryChapterId == chapterId);
+            }
 
-        var text = search?.Trim();
-        if (!string.IsNullOrWhiteSpace(text))
-        {
-            query = query.Where(member =>
-                member.FirstName.Contains(text) ||
-                member.LastName.Contains(text) ||
-                (member.MiddleName != null && member.MiddleName.Contains(text)) ||
-                (member.PreferredName != null && member.PreferredName.Contains(text)) ||
-                (member.RoadName != null && member.RoadName.Contains(text)) ||
-                (member.Email != null && member.Email.Contains(text)) ||
-                (member.PhoneNumber != null && member.PhoneNumber.Contains(text)) ||
-                member.PrimaryChapter.Name.Contains(text) ||
-                member.PrimaryChapter.Abbreviation.Contains(text));
-        }
+            if (status is not null)
+            {
+                query = query.Where(member => member.Status == status);
+            }
 
-        var members = await query
-            .OrderBy(member => member.PrimaryChapter.Abbreviation)
-            .ThenBy(member => member.RoadName ?? member.LastName)
-            .ThenBy(member => member.LastName)
-            .ThenBy(member => member.FirstName)
-            .Take(250)
-            .ToListAsync();
+            var text = search?.Trim();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                query = query.Where(member =>
+                    member.FirstName.Contains(text) ||
+                    member.LastName.Contains(text) ||
+                    (member.MiddleName != null && member.MiddleName.Contains(text)) ||
+                    (member.PreferredName != null && member.PreferredName.Contains(text)) ||
+                    (member.RoadName != null && member.RoadName.Contains(text)) ||
+                    (member.Email != null && member.Email.Contains(text)) ||
+                    (member.PhoneNumber != null && member.PhoneNumber.Contains(text)) ||
+                    member.PrimaryChapter.Name.Contains(text) ||
+                    member.PrimaryChapter.Abbreviation.Contains(text));
+            }
 
-        return members.Select(member => new MemberListItem
+            var members = await query
+                .OrderBy(member => member.PrimaryChapter.Abbreviation)
+                .ThenBy(member => member.RoadName ?? member.LastName)
+                .ThenBy(member => member.LastName)
+                .ThenBy(member => member.FirstName)
+                .Take(250)
+                .ToListAsync();
+
+            return members.Select(member => new MemberListItem
             {
                 Id = member.Id,
                 DisplayName = DisplayName(member),
@@ -70,11 +74,12 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 PhoneNumber = member.PhoneNumber
             })
             .ToList();
+        });
     }
 
     public async Task<MemberEditModel?> GetMemberAsync(Guid id)
     {
-        return await dbContext.Members
+        return await UseDbContextAsync(async () => await dbContext.Members
             .AsNoTracking()
             .Include(member => member.MilitaryServiceRecords)
             .Where(member => member.Id == id)
@@ -113,64 +118,70 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                     })
                     .ToList()
             })
-            .SingleOrDefaultAsync();
+            .SingleOrDefaultAsync());
     }
 
     public async Task<MemberProfileViewModel?> GetProfileForUserAsync(string applicationUserId)
     {
-        var member = await dbContext.Members
-            .AsNoTracking()
-            .Include(existing => existing.PrimaryChapter)
-            .Include(existing => existing.MilitaryServiceRecords)
-            .SingleOrDefaultAsync(existing => existing.ApplicationUserId == applicationUserId);
+        return await UseDbContextAsync(async () =>
+        {
+            var member = await dbContext.Members
+                .AsNoTracking()
+                .Include(existing => existing.PrimaryChapter)
+                .Include(existing => existing.MilitaryServiceRecords)
+                .SingleOrDefaultAsync(existing => existing.ApplicationUserId == applicationUserId);
 
-        return member is null ? null : ToProfile(member);
+            return member is null ? null : ToProfile(member);
+        });
     }
 
     public async Task<string?> GetMemberProfileLabelAsync(string applicationUserId)
     {
-        var member = await dbContext.Members
-            .AsNoTracking()
-            .Where(existing => existing.ApplicationUserId == applicationUserId)
-            .Select(existing => new
-            {
-                existing.FirstName,
-                existing.LastName,
-                existing.PreferredName,
-                existing.RoadName
-            })
-            .SingleOrDefaultAsync();
+        return await UseDbContextAsync(async () =>
+        {
+            var member = await dbContext.Members
+                .AsNoTracking()
+                .Where(existing => existing.ApplicationUserId == applicationUserId)
+                .Select(existing => new
+                {
+                    existing.FirstName,
+                    existing.LastName,
+                    existing.PreferredName,
+                    existing.RoadName
+                })
+                .SingleOrDefaultAsync();
 
-        return member is null
-            ? null
-            : DisplayName(member.FirstName, member.LastName, member.PreferredName, member.RoadName);
+            return member is null
+                ? null
+                : DisplayName(member.FirstName, member.LastName, member.PreferredName, member.RoadName);
+        });
     }
 
     public async Task<IReadOnlyList<MemberLinkedAccountOption>> GetLinkableAccountsAsync(string? selectedApplicationUserId)
     {
-        return await dbContext.Users
+        return await UseDbContextAsync(async () => await dbContext.Users
             .AsNoTracking()
             .Where(user => user.Id == selectedApplicationUserId ||
                            !dbContext.Members.Any(member => member.ApplicationUserId == user.Id))
             .OrderBy(user => user.UserName)
             .Select(user => new MemberLinkedAccountOption(user.Id, user.UserName ?? user.Id, user.Email))
-            .ToListAsync();
+            .ToListAsync());
     }
 
     public async Task<IReadOnlyList<ChapterOption>> GetChapterOptionsAsync()
     {
-        return await dbContext.OrganizationUnits
+        return await UseDbContextAsync(async () => await dbContext.OrganizationUnits
             .AsNoTracking()
             .Where(unit => unit.Level == OrganizationLevel.LocalChapter &&
                            unit.Status == OrganizationStatus.Operating)
             .OrderBy(unit => unit.Abbreviation)
             .Select(unit => new ChapterOption(unit.Id, unit.Abbreviation, unit.Name))
-            .ToListAsync();
+            .ToListAsync());
     }
 
     public async Task<IReadOnlyList<MemberChapterAssignmentItem>> GetChapterAssignmentsAsync(Guid memberId)
     {
-        return await dbContext.MemberChapterAssignments
+        return await UseDbContextAsync(async () => await dbContext.MemberChapterAssignments
             .AsNoTracking()
             .Where(assignment => assignment.MemberId == memberId)
             .OrderByDescending(assignment => assignment.StartDate)
@@ -183,42 +194,49 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 EndDate = assignment.EndDate,
                 IsPrimary = assignment.IsPrimary
             })
-            .ToListAsync();
+            .ToListAsync());
     }
 
     public async Task<IReadOnlyList<MemberAuditLogItem>> GetAuditLogsAsync(Guid memberId, int take = 50)
     {
-        var logs = await dbContext.AuditLogs
-            .AsNoTracking()
-            .Where(log => log.EntityName == nameof(Member) && log.EntityId == memberId.ToString())
-            .OrderByDescending(log => log.CreatedAt)
-            .ThenByDescending(log => log.Id)
-            .Take(take)
-            .Select(log => new
-            {
-                log.Id,
-                log.CreatedAt,
-                log.Action,
-                log.ActorName,
-                log.ActorSource,
-                log.DetailsJson
-            })
-            .ToListAsync();
+        return await UseDbContextAsync(async () =>
+        {
+            var logs = await dbContext.AuditLogs
+                .AsNoTracking()
+                .Where(log => log.EntityName == nameof(Member) && log.EntityId == memberId.ToString())
+                .OrderByDescending(log => log.CreatedAt)
+                .ThenByDescending(log => log.Id)
+                .Take(take)
+                .Select(log => new
+                {
+                    log.Id,
+                    log.CreatedAt,
+                    log.Action,
+                    log.ActorName,
+                    log.ActorSource,
+                    log.DetailsJson
+                })
+                .ToListAsync();
 
-        return logs.Select(log => new MemberAuditLogItem
+            var auditValueLabels = await BuildAuditValueLabelsAsync(logs.Select(log => log.DetailsJson));
+
+            return logs.Select(log => new MemberAuditLogItem
             {
                 Id = log.Id,
                 CreatedAt = log.CreatedAt,
                 Action = log.Action,
                 ActorName = log.ActorName,
                 ActorSource = log.ActorSource,
-                Summary = BuildAuditSummary(log.Action, log.DetailsJson)
+                Summary = BuildAuditSummary(log.Action, log.DetailsJson, auditValueLabels)
             })
             .ToList();
+        });
     }
 
     public async Task<MemberSaveResult> CreateAsync(MemberEditModel input, MemberActor actor)
     {
+        return await UseDbContextAsync(async () =>
+        {
         dbContext.ChangeTracker.Clear();
         Normalize(input);
         var validation = await ValidateAsync(input, null);
@@ -280,10 +298,13 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
         await dbContext.SaveChangesAsync();
         return MemberSaveResult.Success(member.Id);
+        });
     }
 
     public async Task<MemberSaveResult> UpdateAsync(Guid id, MemberEditModel input, MemberActor actor)
     {
+        return await UseDbContextAsync(async () =>
+        {
         dbContext.ChangeTracker.Clear();
         Normalize(input);
         var member = await dbContext.Members
@@ -311,7 +332,14 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             return MemberSaveResult.Failure("Eternal Chapter was not found.");
         }
 
-        var changes = BuildMemberChangeSet(member, input, targetChapterId.Value);
+        var auditValueLabels = await BuildAuditValueLabelsForRawValuesAsync(
+        [
+            member.ApplicationUserId,
+            input.ApplicationUserId,
+            member.PrimaryChapterId.ToString(),
+            targetChapterId.Value.ToString()
+        ]);
+        var changes = BuildMemberChangeSet(member, input, targetChapterId.Value, auditValueLabels);
         ApplyMemberFields(member, input);
         member.PrimaryChapterId = targetChapterId.Value;
         member.UpdatedAt = DateTimeOffset.UtcNow;
@@ -345,6 +373,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
         await dbContext.SaveChangesAsync();
         return MemberSaveResult.Success(member.Id);
+        });
     }
 
     private async Task<List<string>> ValidateAsync(MemberEditModel input, Guid? existingId)
@@ -583,10 +612,14 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                existing.ServiceNotes != input.ServiceNotes;
     }
 
-    private static List<AuditFieldChange> BuildMemberChangeSet(Member member, MemberEditModel input, Guid targetChapterId)
+    private static List<AuditFieldChange> BuildMemberChangeSet(
+        Member member,
+        MemberEditModel input,
+        Guid targetChapterId,
+        IReadOnlyDictionary<string, string> auditValueLabels)
     {
         var changes = new List<AuditFieldChange>();
-        AddChange(changes, "Linked Login", member.ApplicationUserId, input.ApplicationUserId);
+        AddChange(changes, "Linked Login", ResolveAuditValue(member.ApplicationUserId, auditValueLabels), ResolveAuditValue(input.ApplicationUserId, auditValueLabels));
         AddChange(changes, "First Name", member.FirstName, input.FirstName);
         AddChange(changes, "Middle Name", member.MiddleName, input.MiddleName);
         AddChange(changes, "Last Name", member.LastName, input.LastName);
@@ -602,7 +635,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         AddChange(changes, "ZIP Code", member.PostalCode, input.PostalCode);
         AddChange(changes, "Date of Birth", FormatAuditValue(member.DateOfBirth), FormatAuditValue(input.DateOfBirth));
         AddChange(changes, "Status", member.Status.ToString(), input.Status.ToString());
-        AddChange(changes, "Primary Chapter", member.PrimaryChapterId.ToString(), targetChapterId.ToString());
+        AddChange(changes, "Primary Chapter", ResolveAuditValue(member.PrimaryChapterId.ToString(), auditValueLabels), ResolveAuditValue(targetChapterId.ToString(), auditValueLabels));
         AddChange(changes, "Joined Date", FormatAuditValue(member.JoinedOn), FormatAuditValue(input.JoinedOn));
         AddChange(changes, "Notes", member.Notes, input.Notes);
         return changes;
@@ -725,12 +758,112 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         return value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     }
 
-    private static string BuildAuditSummary(AuditAction action, string? detailsJson)
+    private async Task<IReadOnlyDictionary<string, string>> BuildAuditValueLabelsAsync(IEnumerable<string?> detailsJsons)
+    {
+        var rawValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var detailsJson in detailsJsons)
+        {
+            if (string.IsNullOrWhiteSpace(detailsJson))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(detailsJson);
+                if (!document.RootElement.TryGetProperty("Changes", out var changes) ||
+                    changes.ValueKind != JsonValueKind.Array)
+                {
+                    continue;
+                }
+
+                foreach (var change in changes.EnumerateArray())
+                {
+                    AddRawAuditValue(rawValues, GetJsonString(change, "From"));
+                    AddRawAuditValue(rawValues, GetJsonString(change, "To"));
+                }
+            }
+            catch (JsonException)
+            {
+                continue;
+            }
+        }
+
+        return await BuildAuditValueLabelsForRawValuesAsync(rawValues);
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> BuildAuditValueLabelsForRawValuesAsync(IEnumerable<string?> rawValues)
+    {
+        var values = rawValues
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (values.Count == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var userIds = values;
+        if (userIds.Count > 0)
+        {
+            var users = await dbContext.Users
+                .AsNoTracking()
+                .Where(user => userIds.Contains(user.Id))
+                .Select(user => new { user.Id, user.UserName, user.Email })
+                .ToListAsync();
+
+            foreach (var user in users)
+            {
+                labels[user.Id] = user.UserName ?? user.Email ?? user.Id;
+            }
+        }
+
+        var chapterIds = values
+            .Select(value => Guid.TryParse(value, out var id) ? id : (Guid?)null)
+            .Where(id => id is not null)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+
+        if (chapterIds.Count > 0)
+        {
+            var chapters = await dbContext.OrganizationUnits
+                .AsNoTracking()
+                .Where(chapter => chapterIds.Contains(chapter.Id))
+                .Select(chapter => new { chapter.Id, chapter.Abbreviation })
+                .ToListAsync();
+
+            foreach (var chapter in chapters)
+            {
+                labels[chapter.Id.ToString()] = chapter.Abbreviation;
+            }
+        }
+
+        return labels;
+    }
+
+    private static void AddRawAuditValue(HashSet<string> rawValues, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            rawValues.Add(value);
+        }
+    }
+
+    private static string? ResolveAuditValue(string? value, IReadOnlyDictionary<string, string> auditValueLabels)
+    {
+        return value is not null && auditValueLabels.TryGetValue(value, out var label) ? label : value;
+    }
+
+    private static string BuildAuditSummary(AuditAction action, string? detailsJson, IReadOnlyDictionary<string, string> auditValueLabels)
     {
         return action switch
         {
             AuditAction.Created => "Member created.",
-            AuditAction.MemberUpdated => BuildUpdatedSummary(detailsJson),
+            AuditAction.MemberUpdated => BuildUpdatedSummary(detailsJson, auditValueLabels),
             AuditAction.MemberChapterTransferred => "Chapter assignment changed.",
             AuditAction.MilitaryServiceAdded => "Military service record added.",
             AuditAction.MilitaryServiceUpdated => "Military service record updated.",
@@ -739,7 +872,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         };
     }
 
-    private static string BuildUpdatedSummary(string? detailsJson)
+    private static string BuildUpdatedSummary(string? detailsJson, IReadOnlyDictionary<string, string> auditValueLabels)
     {
         if (string.IsNullOrWhiteSpace(detailsJson))
         {
@@ -761,7 +894,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                     var field = GetJsonString(change, "Field");
                     return string.IsNullOrWhiteSpace(field)
                         ? null
-                        : $"{field} changed from {DisplayAuditValue(GetJsonString(change, "From"))} to {DisplayAuditValue(GetJsonString(change, "To"))}";
+                        : $"{field} changed from {DisplayAuditValue(GetJsonString(change, "From"), auditValueLabels)} to {DisplayAuditValue(GetJsonString(change, "To"), auditValueLabels)}";
                 })
                 .Where(summary => !string.IsNullOrWhiteSpace(summary))
                 .Take(3)
@@ -782,9 +915,10 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             : null;
     }
 
-    private static string DisplayAuditValue(string? value)
+    private static string DisplayAuditValue(string? value, IReadOnlyDictionary<string, string> auditValueLabels)
     {
-        return string.IsNullOrWhiteSpace(value) ? "(blank)" : $"\"{value}\"";
+        var displayValue = ResolveAuditValue(value, auditValueLabels);
+        return string.IsNullOrWhiteSpace(displayValue) ? "(blank)" : $"\"{displayValue}\"";
     }
 
     private void AddAudit(AuditAction action, Member member, MemberActor actor, Guid? organizationUnitId, object details)
@@ -800,6 +934,19 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             EntityId = member.Id.ToString(),
             DetailsJson = JsonSerializer.Serialize(details)
         });
+    }
+
+    private async Task<T> UseDbContextAsync<T>(Func<Task<T>> operation)
+    {
+        await dbContextGate.WaitAsync();
+        try
+        {
+            return await operation();
+        }
+        finally
+        {
+            dbContextGate.Release();
+        }
     }
 
     private sealed record AuditFieldChange(string Field, string? From, string? To);
