@@ -12,6 +12,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<StateChapterAssignment> StateChapterAssignments => Set<StateChapterAssignment>();
     public DbSet<Member> Members => Set<Member>();
     public DbSet<MemberChapterAssignment> MemberChapterAssignments => Set<MemberChapterAssignment>();
+    public DbSet<MemberStatusHistory> MemberStatusHistory => Set<MemberStatusHistory>();
     public DbSet<MilitaryServiceRecord> MilitaryServiceRecords => Set<MilitaryServiceRecord>();
     public DbSet<MemberChangeRequest> MemberChangeRequests => Set<MemberChangeRequest>();
     public DbSet<RideEvent> RideEvents => Set<RideEvent>();

@@ -3,11 +3,10 @@ namespace EaglesNest.Core.Domain;
 public enum MemberStatus
 {
     Prospect = 1,
-    Probationary = 2,
-    Active = 3,
-    Inactive = 4,
+    Probate = 2,
+    PatchHolder = 3,
+    Out = 4,
     Suspended = 5,
-    Resigned = 6,
-    Expelled = 7,
+    Retired = 6,
     Deceased = 8
 }

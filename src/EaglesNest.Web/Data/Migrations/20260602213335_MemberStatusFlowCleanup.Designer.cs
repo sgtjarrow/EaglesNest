@@ -4,16 +4,19 @@ using EaglesNest.Web.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace EaglesNest.Web.Migrations
+namespace EaglesNest.Web.Data.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260602213335_MemberStatusFlowCleanup")]
+    partial class MemberStatusFlowCleanup
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -269,10 +272,6 @@ namespace EaglesNest.Web.Migrations
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<string>("BloodType")
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
                     b.Property<string>("City")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -292,17 +291,13 @@ namespace EaglesNest.Web.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateOnly?>("JoinedOn")
+                        .HasColumnType("date");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Gender")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateOnly?>("LifetimeDate")
-                        .HasColumnType("date");
 
                     b.Property<string>("MiddleName")
                         .HasMaxLength(100)
@@ -424,49 +419,6 @@ namespace EaglesNest.Web.Migrations
                     b.ToTable("MemberChapterAssignments");
                 });
 
-            modelBuilder.Entity("EaglesNest.Core.Domain.MemberStatusHistory", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("ActorName")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("ActorSource")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("CreatedByUserId")
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateOnly>("EffectiveDate")
-                        .HasColumnType("date");
-
-                    b.Property<Guid>("MemberId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("Status")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MemberId");
-
-                    b.ToTable("MemberStatusHistory");
-                });
-
             modelBuilder.Entity("EaglesNest.Core.Domain.MilitaryServiceRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -475,14 +427,6 @@ namespace EaglesNest.Web.Migrations
 
                     b.Property<string>("Branch")
                         .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("ConflictTab")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("DischargeType")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
@@ -1039,17 +983,6 @@ namespace EaglesNest.Web.Migrations
                     b.Navigation("Member");
                 });
 
-            modelBuilder.Entity("EaglesNest.Core.Domain.MemberStatusHistory", b =>
-                {
-                    b.HasOne("EaglesNest.Core.Domain.Member", "Member")
-                        .WithMany("StatusHistory")
-                        .HasForeignKey("MemberId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Member");
-                });
-
             modelBuilder.Entity("EaglesNest.Core.Domain.MilitaryServiceRecord", b =>
                 {
                     b.HasOne("EaglesNest.Core.Domain.Member", "Member")
@@ -1196,8 +1129,6 @@ namespace EaglesNest.Web.Migrations
                     b.Navigation("ChapterAssignments");
 
                     b.Navigation("MilitaryServiceRecords");
-
-                    b.Navigation("StatusHistory");
                 });
 
             modelBuilder.Entity("EaglesNest.Core.Domain.OrganizationUnit", b =>

@@ -13,9 +13,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
     private static readonly MemberStatus[] RoadNameConflictStatuses =
     [
         MemberStatus.Prospect,
-        MemberStatus.Probationary,
-        MemberStatus.Active,
-        MemberStatus.Inactive,
+        MemberStatus.Probate,
+        MemberStatus.PatchHolder,
         MemberStatus.Suspended
     ];
 
@@ -101,9 +100,12 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 State = member.State,
                 PostalCode = member.PostalCode,
                 DateOfBirth = member.DateOfBirth,
+                BloodType = member.BloodType,
+                Gender = member.Gender,
+                LifetimeDate = member.LifetimeDate,
                 Status = member.Status,
                 PrimaryChapterId = member.PrimaryChapterId,
-                JoinedOn = member.JoinedOn,
+                StatusEffectiveDate = DateOnly.FromDateTime(DateTime.Today),
                 Notes = member.Notes,
                 MilitaryServiceRecords = member.MilitaryServiceRecords
                     .OrderBy(record => record.ServiceStartDate)
@@ -114,6 +116,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                         Rank = record.Rank,
                         ServiceStartDate = record.ServiceStartDate,
                         ServiceEndDate = record.ServiceEndDate,
+                        DischargeType = record.DischargeType,
+                        ConflictTab = record.ConflictTab,
                         ServiceNotes = record.ServiceNotes
                     })
                     .ToList()
@@ -170,13 +174,35 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
     public async Task<IReadOnlyList<ChapterOption>> GetChapterOptionsAsync()
     {
-        return await UseDbContextAsync(async () => await dbContext.OrganizationUnits
-            .AsNoTracking()
-            .Where(unit => unit.Level == OrganizationLevel.LocalChapter &&
-                           unit.Status == OrganizationStatus.Operating)
-            .OrderBy(unit => unit.Abbreviation)
-            .Select(unit => new ChapterOption(unit.Id, unit.Abbreviation, unit.Name))
-            .ToListAsync());
+        return await UseDbContextAsync(async () =>
+        {
+            var chapters = await dbContext.OrganizationUnits
+                .AsNoTracking()
+                .Where(unit => unit.Level == OrganizationLevel.LocalChapter &&
+                               unit.Status == OrganizationStatus.Operating)
+                .Select(unit => new
+                {
+                    unit.Id,
+                    unit.Abbreviation,
+                    unit.Name,
+                    StateName = unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Name,
+                    StateAbbreviation = unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Abbreviation
+                })
+                .ToListAsync();
+
+            return chapters
+                .Select(chapter => new ChapterOption(
+                    chapter.Id,
+                    chapter.Abbreviation,
+                    chapter.Name,
+                    chapter.StateName,
+                    chapter.StateAbbreviation,
+                    ChapterSortGroup(chapter.Abbreviation, chapter.StateName),
+                    ChapterSortName(chapter.Abbreviation, chapter.Name)))
+                .OrderBy(chapter => chapter.SortGroup)
+                .ThenBy(chapter => chapter.SortName)
+                .ToList();
+        });
     }
 
     public async Task<IReadOnlyList<MemberChapterAssignmentItem>> GetChapterAssignmentsAsync(Guid memberId)
@@ -193,6 +219,26 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 StartDate = assignment.StartDate,
                 EndDate = assignment.EndDate,
                 IsPrimary = assignment.IsPrimary
+            })
+            .ToListAsync());
+    }
+
+    public async Task<IReadOnlyList<MemberStatusHistoryItem>> GetStatusHistoryAsync(Guid memberId)
+    {
+        return await UseDbContextAsync(async () => await dbContext.MemberStatusHistory
+            .AsNoTracking()
+            .Where(history => history.MemberId == memberId)
+            .OrderByDescending(history => history.EffectiveDate)
+            .ThenByDescending(history => history.CreatedAt)
+            .Select(history => new MemberStatusHistoryItem
+            {
+                Id = history.Id,
+                Status = history.Status,
+                EffectiveDate = history.EffectiveDate,
+                Notes = history.Notes,
+                ActorName = history.ActorName,
+                ActorSource = history.ActorSource,
+                CreatedAt = history.CreatedAt
             })
             .ToListAsync());
     }
@@ -237,67 +283,71 @@ public class MemberAdminService(ApplicationDbContext dbContext)
     {
         return await UseDbContextAsync(async () =>
         {
-        dbContext.ChangeTracker.Clear();
-        Normalize(input);
-        var validation = await ValidateAsync(input, null);
-        if (validation.Count > 0)
-        {
-            return MemberSaveResult.Failure([.. validation]);
-        }
+            dbContext.ChangeTracker.Clear();
+            Normalize(input);
+            var validation = await ValidateAsync(input, null);
+            if (validation.Count > 0)
+            {
+                return MemberSaveResult.Failure([.. validation]);
+            }
 
-        var primaryChapterId = input.Status == MemberStatus.Deceased
-            ? await GetEternalChapterIdAsync()
-            : input.PrimaryChapterId;
+            var primaryChapterId = input.Status == MemberStatus.Deceased
+                ? await GetEternalChapterIdAsync()
+                : input.PrimaryChapterId;
 
-        if (primaryChapterId is null)
-        {
-            return MemberSaveResult.Failure("Eternal Chapter was not found.");
-        }
+            if (primaryChapterId is null)
+            {
+                return MemberSaveResult.Failure("Eternal Chapter was not found.");
+            }
 
-        var member = new Member
-        {
-            Id = Guid.NewGuid(),
-            ApplicationUserId = input.ApplicationUserId,
-            FirstName = input.FirstName,
-            MiddleName = input.MiddleName,
-            LastName = input.LastName,
-            Suffix = input.Suffix,
-            PreferredName = input.PreferredName,
-            RoadName = input.RoadName,
-            Email = input.Email,
-            PhoneNumber = input.PhoneNumber,
-            AddressLine1 = input.AddressLine1,
-            AddressLine2 = input.AddressLine2,
-            City = input.City,
-            State = input.State,
-            PostalCode = input.PostalCode,
-            DateOfBirth = input.DateOfBirth,
-            Status = input.Status,
-            PrimaryChapterId = primaryChapterId.Value,
-            JoinedOn = input.JoinedOn,
-            Notes = input.Notes
-        };
+            var member = new Member
+            {
+                Id = Guid.NewGuid(),
+                ApplicationUserId = input.ApplicationUserId,
+                FirstName = input.FirstName,
+                MiddleName = input.MiddleName,
+                LastName = input.LastName,
+                Suffix = input.Suffix,
+                PreferredName = input.PreferredName,
+                RoadName = input.RoadName,
+                Email = input.Email,
+                PhoneNumber = input.PhoneNumber,
+                AddressLine1 = input.AddressLine1,
+                AddressLine2 = input.AddressLine2,
+                City = input.City,
+                State = input.State,
+                PostalCode = input.PostalCode,
+                DateOfBirth = input.DateOfBirth,
+                BloodType = input.BloodType,
+                Gender = input.Gender,
+                LifetimeDate = input.LifetimeDate,
+                Status = input.Status,
+                PrimaryChapterId = primaryChapterId.Value,
+                Notes = input.Notes
+            };
 
-        dbContext.Members.Add(member);
-        dbContext.MemberChapterAssignments.Add(new MemberChapterAssignment
-        {
-            Id = Guid.NewGuid(),
-            MemberId = member.Id,
-            ChapterId = member.PrimaryChapterId,
-            StartDate = input.ChapterEffectiveDate,
-            IsPrimary = true
-        });
+            dbContext.Members.Add(member);
+            dbContext.MemberChapterAssignments.Add(new MemberChapterAssignment
+            {
+                Id = Guid.NewGuid(),
+                MemberId = member.Id,
+                ChapterId = member.PrimaryChapterId,
+                StartDate = input.ChapterEffectiveDate,
+                IsPrimary = true
+            });
+            AddStatusHistory(member, input.StatusEffectiveDate!.Value, input.StatusNotes, actor);
 
-        AddMilitaryServiceRecords(member, input.MilitaryServiceRecords);
-        AddAudit(AuditAction.Created, member, actor, member.PrimaryChapterId, new { MemberId = member.Id, Name = DisplayName(member) });
+            AddMilitaryServiceRecords(member, input.MilitaryServiceRecords);
+            AddAudit(AuditAction.Created, member, actor, member.PrimaryChapterId, new { MemberId = member.Id, Name = DisplayName(member) });
+            AddAudit(AuditAction.MemberStatusChanged, member, actor, member.PrimaryChapterId, new { member.Status, EffectiveDate = input.StatusEffectiveDate, input.StatusNotes });
 
-        if (member.MilitaryServiceRecords.Count > 0)
-        {
-            AddAudit(AuditAction.MilitaryServiceAdded, member, actor, member.PrimaryChapterId, new { Count = member.MilitaryServiceRecords.Count });
-        }
+            if (member.MilitaryServiceRecords.Count > 0)
+            {
+                AddAudit(AuditAction.MilitaryServiceAdded, member, actor, member.PrimaryChapterId, new { Count = member.MilitaryServiceRecords.Count });
+            }
 
-        await dbContext.SaveChangesAsync();
-        return MemberSaveResult.Success(member.Id);
+            await dbContext.SaveChangesAsync();
+            return MemberSaveResult.Success(member.Id);
         });
     }
 
@@ -305,78 +355,85 @@ public class MemberAdminService(ApplicationDbContext dbContext)
     {
         return await UseDbContextAsync(async () =>
         {
-        dbContext.ChangeTracker.Clear();
-        Normalize(input);
-        var member = await dbContext.Members
-            .Include(existing => existing.MilitaryServiceRecords)
-            .SingleOrDefaultAsync(existing => existing.Id == id);
+            dbContext.ChangeTracker.Clear();
+            Normalize(input);
+            var member = await dbContext.Members
+                .Include(existing => existing.MilitaryServiceRecords)
+                .SingleOrDefaultAsync(existing => existing.Id == id);
 
-        if (member is null)
-        {
-            return MemberSaveResult.Failure("Member was not found.");
-        }
+            if (member is null)
+            {
+                return MemberSaveResult.Failure("Member was not found.");
+            }
 
-        var validation = await ValidateAsync(input, id);
-        if (validation.Count > 0)
-        {
-            return MemberSaveResult.Failure([.. validation]);
-        }
+            var statusChanged = member.Status != input.Status;
+            var validation = await ValidateAsync(input, id, statusChanged);
+            if (validation.Count > 0)
+            {
+                return MemberSaveResult.Failure([.. validation]);
+            }
 
-        var originalChapterId = member.PrimaryChapterId;
-        var targetChapterId = input.Status == MemberStatus.Deceased
-            ? await GetEternalChapterIdAsync()
-            : input.PrimaryChapterId!.Value;
+            var originalChapterId = member.PrimaryChapterId;
+            var targetChapterId = input.Status == MemberStatus.Deceased
+                ? await GetEternalChapterIdAsync()
+                : input.PrimaryChapterId!.Value;
 
-        if (targetChapterId is null)
-        {
-            return MemberSaveResult.Failure("Eternal Chapter was not found.");
-        }
+            if (targetChapterId is null)
+            {
+                return MemberSaveResult.Failure("Eternal Chapter was not found.");
+            }
 
-        var auditValueLabels = await BuildAuditValueLabelsForRawValuesAsync(
-        [
-            member.ApplicationUserId,
-            input.ApplicationUserId,
-            member.PrimaryChapterId.ToString(),
-            targetChapterId.Value.ToString()
-        ]);
-        var changes = BuildMemberChangeSet(member, input, targetChapterId.Value, auditValueLabels);
-        ApplyMemberFields(member, input);
-        member.PrimaryChapterId = targetChapterId.Value;
-        member.UpdatedAt = DateTimeOffset.UtcNow;
+            var auditValueLabels = await BuildAuditValueLabelsForRawValuesAsync(
+            [
+                member.ApplicationUserId,
+                input.ApplicationUserId,
+                member.PrimaryChapterId.ToString(),
+                targetChapterId.Value.ToString()
+            ]);
+            var changes = BuildMemberChangeSet(member, input, targetChapterId.Value, auditValueLabels);
+            ApplyMemberFields(member, input);
+            member.PrimaryChapterId = targetChapterId.Value;
+            member.UpdatedAt = DateTimeOffset.UtcNow;
 
-        if (originalChapterId != member.PrimaryChapterId)
-        {
-            await TransferPrimaryChapterAsync(member, input.ChapterEffectiveDate, actor, originalChapterId);
-        }
+            if (originalChapterId != member.PrimaryChapterId)
+            {
+                await TransferPrimaryChapterAsync(member, input.ChapterEffectiveDate, actor, originalChapterId);
+            }
 
-        var militaryChanges = ReplaceMilitaryServiceRecords(dbContext, member, input.MilitaryServiceRecords);
+            if (statusChanged)
+            {
+                AddStatusHistory(member, input.StatusEffectiveDate!.Value, input.StatusNotes, actor);
+                AddAudit(AuditAction.MemberStatusChanged, member, actor, member.PrimaryChapterId, new { member.Status, EffectiveDate = input.StatusEffectiveDate, input.StatusNotes });
+            }
 
-        if (changes.Count > 0)
-        {
-            AddAudit(AuditAction.MemberUpdated, member, actor, member.PrimaryChapterId, new { Changes = changes });
-        }
+            var militaryChanges = ReplaceMilitaryServiceRecords(dbContext, member, input.MilitaryServiceRecords);
 
-        if (militaryChanges.Added > 0)
-        {
-            AddAudit(AuditAction.MilitaryServiceAdded, member, actor, member.PrimaryChapterId, new { militaryChanges.Added });
-        }
+            if (changes.Count > 0)
+            {
+                AddAudit(AuditAction.MemberUpdated, member, actor, member.PrimaryChapterId, new { Changes = changes });
+            }
 
-        if (militaryChanges.Updated > 0)
-        {
-            AddAudit(AuditAction.MilitaryServiceUpdated, member, actor, member.PrimaryChapterId, new { militaryChanges.Updated });
-        }
+            if (militaryChanges.Added > 0)
+            {
+                AddAudit(AuditAction.MilitaryServiceAdded, member, actor, member.PrimaryChapterId, new { militaryChanges.Added });
+            }
 
-        if (militaryChanges.Removed > 0)
-        {
-            AddAudit(AuditAction.MilitaryServiceRemoved, member, actor, member.PrimaryChapterId, new { militaryChanges.Removed });
-        }
+            if (militaryChanges.Updated > 0)
+            {
+                AddAudit(AuditAction.MilitaryServiceUpdated, member, actor, member.PrimaryChapterId, new { militaryChanges.Updated });
+            }
 
-        await dbContext.SaveChangesAsync();
-        return MemberSaveResult.Success(member.Id);
+            if (militaryChanges.Removed > 0)
+            {
+                AddAudit(AuditAction.MilitaryServiceRemoved, member, actor, member.PrimaryChapterId, new { militaryChanges.Removed });
+            }
+
+            await dbContext.SaveChangesAsync();
+            return MemberSaveResult.Success(member.Id);
         });
     }
 
-    private async Task<List<string>> ValidateAsync(MemberEditModel input, Guid? existingId)
+    private async Task<List<string>> ValidateAsync(MemberEditModel input, Guid? existingId, bool statusChanged = true)
     {
         var errors = new List<string>();
 
@@ -431,6 +488,14 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             errors.Add("Eternal Chapter was not found.");
         }
 
+        if (statusChanged && input.StatusEffectiveDate is null)
+        {
+            errors.Add("Status effective date is required when creating a member or changing status.");
+        }
+
+        ValidateOption(errors, input.BloodType, MemberOptionValues.BloodTypes, "Blood type");
+        ValidateOption(errors, input.Gender, MemberOptionValues.Genders, "Gender");
+
         if (!string.IsNullOrWhiteSpace(input.RoadName) && targetChapterId is not null)
         {
             var roadNameConflict = await dbContext.Members.AnyAsync(member =>
@@ -452,9 +517,21 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 errors.Add("Military service branch is required when adding a service record.");
                 break;
             }
+
+            ValidateOption(errors, serviceRecord.Branch, MemberOptionValues.Branches, "Military service branch");
+            ValidateOption(errors, serviceRecord.DischargeType, MemberOptionValues.DischargeTypes, "Discharge type");
+            ValidateOption(errors, serviceRecord.ConflictTab, MemberOptionValues.ConflictTabs, "Conflict tab");
         }
 
         return errors;
+    }
+
+    private static void ValidateOption(List<string> errors, string? value, IReadOnlyCollection<string> allowedValues, string label)
+    {
+        if (!string.IsNullOrWhiteSpace(value) && !allowedValues.Contains(value, StringComparer.OrdinalIgnoreCase))
+        {
+            errors.Add($"{label} must be selected from the allowed list.");
+        }
     }
 
     private async Task TransferPrimaryChapterAsync(Member member, DateOnly effectiveDate, MemberActor actor, Guid originalChapterId)
@@ -514,8 +591,10 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         member.State = input.State;
         member.PostalCode = input.PostalCode;
         member.DateOfBirth = input.DateOfBirth;
+        member.BloodType = input.BloodType;
+        member.Gender = input.Gender;
+        member.LifetimeDate = input.LifetimeDate;
         member.Status = input.Status;
-        member.JoinedOn = input.JoinedOn;
         member.Notes = input.Notes;
     }
 
@@ -551,6 +630,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                     Rank = serviceRecord.Rank,
                     ServiceStartDate = serviceRecord.ServiceStartDate,
                     ServiceEndDate = serviceRecord.ServiceEndDate,
+                    DischargeType = serviceRecord.DischargeType,
+                    ConflictTab = serviceRecord.ConflictTab,
                     ServiceNotes = serviceRecord.ServiceNotes
                 });
                 continue;
@@ -567,6 +648,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                     Rank = serviceRecord.Rank,
                     ServiceStartDate = serviceRecord.ServiceStartDate,
                     ServiceEndDate = serviceRecord.ServiceEndDate,
+                    DischargeType = serviceRecord.DischargeType,
+                    ConflictTab = serviceRecord.ConflictTab,
                     ServiceNotes = serviceRecord.ServiceNotes
                 });
                 continue;
@@ -579,6 +662,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 existing.Rank = serviceRecord.Rank;
                 existing.ServiceStartDate = serviceRecord.ServiceStartDate;
                 existing.ServiceEndDate = serviceRecord.ServiceEndDate;
+                existing.DischargeType = serviceRecord.DischargeType;
+                existing.ConflictTab = serviceRecord.ConflictTab;
                 existing.ServiceNotes = serviceRecord.ServiceNotes;
             }
         }
@@ -598,6 +683,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                 Rank = serviceRecord.Rank,
                 ServiceStartDate = serviceRecord.ServiceStartDate,
                 ServiceEndDate = serviceRecord.ServiceEndDate,
+                DischargeType = serviceRecord.DischargeType,
+                ConflictTab = serviceRecord.ConflictTab,
                 ServiceNotes = serviceRecord.ServiceNotes
             });
         }
@@ -609,7 +696,24 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                existing.Rank != input.Rank ||
                existing.ServiceStartDate != input.ServiceStartDate ||
                existing.ServiceEndDate != input.ServiceEndDate ||
+               existing.DischargeType != input.DischargeType ||
+               existing.ConflictTab != input.ConflictTab ||
                existing.ServiceNotes != input.ServiceNotes;
+    }
+
+    private void AddStatusHistory(Member member, DateOnly effectiveDate, string? notes, MemberActor actor)
+    {
+        dbContext.MemberStatusHistory.Add(new MemberStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            MemberId = member.Id,
+            Status = member.Status,
+            EffectiveDate = effectiveDate,
+            Notes = notes,
+            CreatedByUserId = actor.ApplicationUserId,
+            ActorName = actor.ActorName,
+            ActorSource = actor.ActorSource
+        });
     }
 
     private static List<AuditFieldChange> BuildMemberChangeSet(
@@ -634,9 +738,11 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         AddChange(changes, "State", member.State, input.State);
         AddChange(changes, "ZIP Code", member.PostalCode, input.PostalCode);
         AddChange(changes, "Date of Birth", FormatAuditValue(member.DateOfBirth), FormatAuditValue(input.DateOfBirth));
-        AddChange(changes, "Status", member.Status.ToString(), input.Status.ToString());
+        AddChange(changes, "Blood Type", member.BloodType, input.BloodType);
+        AddChange(changes, "Gender", member.Gender, input.Gender);
+        AddChange(changes, "Lifetime Date", FormatAuditValue(member.LifetimeDate), FormatAuditValue(input.LifetimeDate));
+        AddChange(changes, "Status", MemberOptionValues.DisplayStatus(member.Status), MemberOptionValues.DisplayStatus(input.Status));
         AddChange(changes, "Primary Chapter", ResolveAuditValue(member.PrimaryChapterId.ToString(), auditValueLabels), ResolveAuditValue(targetChapterId.ToString(), auditValueLabels));
-        AddChange(changes, "Joined Date", FormatAuditValue(member.JoinedOn), FormatAuditValue(input.JoinedOn));
         AddChange(changes, "Notes", member.Notes, input.Notes);
         return changes;
     }
@@ -665,14 +771,27 @@ public class MemberAdminService(ApplicationDbContext dbContext)
         input.City = NormalizeName(input.City);
         input.State = NormalizeOptional(input.State)?.ToUpperInvariant();
         input.PostalCode = NormalizeOptional(input.PostalCode);
+        input.BloodType = NormalizeOption(input.BloodType, MemberOptionValues.BloodTypes);
+        input.Gender = NormalizeOption(input.Gender, MemberOptionValues.Genders);
+        input.StatusNotes = NormalizeOptional(input.StatusNotes);
         input.Notes = NormalizeOptional(input.Notes);
 
         foreach (var serviceRecord in input.MilitaryServiceRecords)
         {
-            serviceRecord.Branch = NormalizeName(serviceRecord.Branch) ?? string.Empty;
+            serviceRecord.Branch = NormalizeOption(serviceRecord.Branch, MemberOptionValues.Branches) ?? string.Empty;
             serviceRecord.Rank = NormalizeOptional(serviceRecord.Rank);
+            serviceRecord.DischargeType = NormalizeOption(serviceRecord.DischargeType, MemberOptionValues.DischargeTypes);
+            serviceRecord.ConflictTab = NormalizeOption(serviceRecord.ConflictTab, MemberOptionValues.ConflictTabs);
             serviceRecord.ServiceNotes = NormalizeOptional(serviceRecord.ServiceNotes);
         }
+    }
+
+    private static string? NormalizeOption(string? value, IReadOnlyCollection<string> allowedValues)
+    {
+        var normalized = NormalizeOptional(value);
+        return normalized is null
+            ? null
+            : allowedValues.FirstOrDefault(option => string.Equals(option, normalized, StringComparison.OrdinalIgnoreCase)) ?? normalized;
     }
 
     private static string? NormalizeName(string? value)
@@ -708,7 +827,9 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             State = member.State,
             PostalCode = member.PostalCode,
             DateOfBirth = member.DateOfBirth,
-            JoinedOn = member.JoinedOn,
+            BloodType = member.BloodType,
+            Gender = member.Gender,
+            LifetimeDate = member.LifetimeDate,
             Status = member.Status,
             ChapterName = member.PrimaryChapter.Name,
             ChapterAbbreviation = member.PrimaryChapter.Abbreviation,
@@ -721,6 +842,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
                     Rank = record.Rank,
                     ServiceStartDate = record.ServiceStartDate,
                     ServiceEndDate = record.ServiceEndDate,
+                    DischargeType = record.DischargeType,
+                    ConflictTab = record.ConflictTab,
                     ServiceNotes = record.ServiceNotes
                 })
                 .ToList()
@@ -751,6 +874,24 @@ public class MemberAdminService(ApplicationDbContext dbContext)
     {
         return string.Join(" ", new[] { member.FirstName, member.MiddleName, member.LastName, member.Suffix }
             .Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private static string ChapterSortGroup(string abbreviation, string? stateName)
+    {
+        return IsEternalChapter(abbreviation)
+            ? "0000"
+            : $"1000-{stateName ?? string.Empty}";
+    }
+
+    private static string ChapterSortName(string abbreviation, string name)
+    {
+        return IsEternalChapter(abbreviation) ? "0000" : name;
+    }
+
+    private static bool IsEternalChapter(string? abbreviation)
+    {
+        return string.Equals(abbreviation, "Chapter-100", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(abbreviation, "US-100", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? FormatAuditValue(DateOnly? value)
@@ -868,8 +1009,35 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             AuditAction.MilitaryServiceAdded => "Military service record added.",
             AuditAction.MilitaryServiceUpdated => "Military service record updated.",
             AuditAction.MilitaryServiceRemoved => "Military service record removed.",
+            AuditAction.MemberStatusChanged => BuildStatusChangedSummary(detailsJson),
             _ => action.ToString()
         };
+    }
+
+    private static string BuildStatusChangedSummary(string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return "Member status changed.";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            var status = GetJsonString(document.RootElement, "Status");
+            var effectiveDate = GetJsonString(document.RootElement, "EffectiveDate");
+            var displayStatus = Enum.TryParse<MemberStatus>(status, out var parsedStatus)
+                ? MemberOptionValues.DisplayStatus(parsedStatus)
+                : status;
+
+            return string.IsNullOrWhiteSpace(effectiveDate)
+                ? $"Status changed to {displayStatus}."
+                : $"Status changed to {displayStatus} effective {effectiveDate}.";
+        }
+        catch (JsonException)
+        {
+            return "Member status changed.";
+        }
     }
 
     private static string BuildUpdatedSummary(string? detailsJson, IReadOnlyDictionary<string, string> auditValueLabels)
@@ -953,4 +1121,11 @@ public class MemberAdminService(ApplicationDbContext dbContext)
     private sealed record MilitaryServiceChangeCount(int Added, int Updated, int Removed);
 }
 
-public sealed record ChapterOption(Guid Id, string Abbreviation, string Name);
+public sealed record ChapterOption(
+    Guid Id,
+    string Abbreviation,
+    string Name,
+    string? StateName,
+    string? StateAbbreviation,
+    string SortGroup,
+    string SortName);

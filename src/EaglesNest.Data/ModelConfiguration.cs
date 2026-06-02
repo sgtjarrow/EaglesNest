@@ -67,6 +67,8 @@ public static class ModelConfiguration
             entity.Property(e => e.City).HasMaxLength(100);
             entity.Property(e => e.State).HasMaxLength(50);
             entity.Property(e => e.PostalCode).HasMaxLength(20);
+            entity.Property(e => e.BloodType).HasMaxLength(10);
+            entity.Property(e => e.Gender).HasMaxLength(20);
             entity.HasIndex(e => e.ApplicationUserId);
             entity.HasOne(e => e.PrimaryChapter)
                 .WithMany()
@@ -86,10 +88,24 @@ public static class ModelConfiguration
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        modelBuilder.Entity<MemberStatusHistory>(entity =>
+        {
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.Property(e => e.ActorName).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorSource).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.CreatedByUserId).HasMaxLength(450);
+            entity.HasOne(e => e.Member)
+                .WithMany(e => e.StatusHistory)
+                .HasForeignKey(e => e.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<MilitaryServiceRecord>(entity =>
         {
             entity.Property(e => e.Branch).HasMaxLength(100).IsRequired();
             entity.Property(e => e.Rank).HasMaxLength(100);
+            entity.Property(e => e.DischargeType).HasMaxLength(100);
+            entity.Property(e => e.ConflictTab).HasMaxLength(100);
             entity.HasOne(e => e.Member)
                 .WithMany(e => e.MilitaryServiceRecords)
                 .HasForeignKey(e => e.MemberId)

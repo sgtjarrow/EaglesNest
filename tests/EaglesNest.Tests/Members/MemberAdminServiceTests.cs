@@ -57,6 +57,25 @@ public class MemberAdminServiceTests
     }
 
     [Fact]
+    public async Task GetChapterOptionsAsync_OrdersLikeChapterHierarchy()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var georgia = AddOrganization(dbContext, "Georgia", "GA", OrganizationLevel.State, national.Id);
+        var florida = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        AddOrganization(dbContext, "Atlanta", "GA-1", OrganizationLevel.LocalChapter, georgia.Id);
+        AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, florida.Id);
+        AddOrganization(dbContext, "Jensen Beach", "FLA-4", OrganizationLevel.LocalChapter, florida.Id);
+        AddOrganization(dbContext, "Eternal Chapter", "Chapter-100", OrganizationLevel.LocalChapter, national.Id);
+        await dbContext.SaveChangesAsync();
+        var service = new MemberAdminService(dbContext);
+
+        var options = await service.GetChapterOptionsAsync();
+
+        Assert.Equal(["Chapter-100", "FLA-4", "FLA-7", "GA-1"], options.Select(option => option.Abbreviation));
+    }
+
+    [Fact]
     public async Task UpdateAsync_RejectsRoadNameConflictInDestinationChapter()
     {
         await using var dbContext = CreateDbContext();
@@ -127,6 +146,68 @@ public class MemberAdminServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_WritesInitialStatusHistory()
+    {
+        await using var dbContext = CreateDbContext();
+        var (_, chapter, _) = AddChapterSetup(dbContext);
+        await dbContext.SaveChangesAsync();
+        var service = new MemberAdminService(dbContext);
+        var input = NewMember("John", "Smith", "Hammer", chapter.Id);
+        input.Status = MemberStatus.Prospect;
+        input.StatusEffectiveDate = new DateOnly(2026, 2, 3);
+        input.StatusNotes = "Started prospect period.";
+
+        var result = await service.CreateAsync(input, TestActor);
+
+        Assert.True(result.Succeeded);
+        var statusHistory = await dbContext.MemberStatusHistory.SingleAsync(history => history.MemberId == result.MemberId);
+        Assert.Equal(MemberStatus.Prospect, statusHistory.Status);
+        Assert.Equal(new DateOnly(2026, 2, 3), statusHistory.EffectiveDate);
+        Assert.Equal("Started prospect period.", statusHistory.Notes);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_StatusChangeRequiresEffectiveDate()
+    {
+        await using var dbContext = CreateDbContext();
+        var (_, chapter, _) = AddChapterSetup(dbContext);
+        await dbContext.SaveChangesAsync();
+        var service = new MemberAdminService(dbContext);
+        var created = await service.CreateAsync(NewMember("John", "Smith", "Hammer", chapter.Id), TestActor);
+        var edit = (await service.GetMemberAsync(created.MemberId!.Value))!;
+        edit.Status = MemberStatus.Suspended;
+        edit.StatusEffectiveDate = null;
+
+        var result = await service.UpdateAsync(created.MemberId.Value, edit, TestActor);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, error => error.Contains("Status effective date", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task UpdateAsync_StatusChangeWritesStatusHistory()
+    {
+        await using var dbContext = CreateDbContext();
+        var (_, chapter, _) = AddChapterSetup(dbContext);
+        await dbContext.SaveChangesAsync();
+        var service = new MemberAdminService(dbContext);
+        var created = await service.CreateAsync(NewMember("John", "Smith", "Hammer", chapter.Id), TestActor);
+        var edit = (await service.GetMemberAsync(created.MemberId!.Value))!;
+        edit.Status = MemberStatus.Suspended;
+        edit.StatusEffectiveDate = new DateOnly(2026, 6, 2);
+        edit.StatusNotes = "Test suspension.";
+
+        var result = await service.UpdateAsync(created.MemberId.Value, edit, TestActor);
+        var history = await service.GetStatusHistoryAsync(created.MemberId.Value);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(MemberStatus.Suspended, history[0].Status);
+        Assert.Equal(new DateOnly(2026, 6, 2), history[0].EffectiveDate);
+        Assert.Equal("Test suspension.", history[0].Notes);
+        Assert.True(await dbContext.AuditLogs.AnyAsync(log => log.Action == AuditAction.MemberStatusChanged));
+    }
+
+    [Fact]
     public async Task CreateAsync_StoresMultipleMilitaryServiceRecords()
     {
         await using var dbContext = CreateDbContext();
@@ -134,13 +215,29 @@ public class MemberAdminServiceTests
         await dbContext.SaveChangesAsync();
         var service = new MemberAdminService(dbContext);
         var input = NewMember("John", "Smith", "Hammer", chapter.Id);
-        input.MilitaryServiceRecords.Add(new MilitaryServiceEditModel { Branch = "Army", Rank = "Sgt" });
+        input.BloodType = "O+";
+        input.Gender = "Male";
+        input.LifetimeDate = new DateOnly(2036, 1, 1);
+        input.MilitaryServiceRecords.Add(new MilitaryServiceEditModel
+        {
+            Branch = "Army",
+            Rank = "Sgt",
+            DischargeType = "Honorable",
+            ConflictTab = "Iraq"
+        });
         input.MilitaryServiceRecords.Add(new MilitaryServiceEditModel { Branch = "Navy", Rank = "Po2" });
 
         var result = await service.CreateAsync(input, TestActor);
 
         Assert.True(result.Succeeded);
         Assert.Equal(2, await dbContext.MilitaryServiceRecords.CountAsync(record => record.MemberId == result.MemberId));
+        var member = await dbContext.Members.SingleAsync(member => member.Id == result.MemberId);
+        var serviceRecord = await dbContext.MilitaryServiceRecords.SingleAsync(record => record.MemberId == result.MemberId && record.Branch == "Army");
+        Assert.Equal("O+", member.BloodType);
+        Assert.Equal("Male", member.Gender);
+        Assert.Equal(new DateOnly(2036, 1, 1), member.LifetimeDate);
+        Assert.Equal("Honorable", serviceRecord.DischargeType);
+        Assert.Equal("Iraq", serviceRecord.ConflictTab);
     }
 
     [Fact]
@@ -316,9 +413,10 @@ public class MemberAdminServiceTests
             FirstName = firstName,
             LastName = lastName,
             RoadName = roadName,
-            Status = MemberStatus.Active,
+            Status = MemberStatus.PatchHolder,
             PrimaryChapterId = chapterId,
-            ChapterEffectiveDate = new DateOnly(2026, 1, 1)
+            ChapterEffectiveDate = new DateOnly(2026, 1, 1),
+            StatusEffectiveDate = new DateOnly(2026, 1, 1)
         };
     }
 }

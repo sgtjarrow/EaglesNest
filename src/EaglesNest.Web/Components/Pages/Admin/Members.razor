@@ -34,18 +34,27 @@
                 <div class="col-md-7">
                     <select class="form-select" @onchange="OnChapterFilterChangedAsync">
                         <option value="">All chapters</option>
-                        @foreach (var chapter in chapterOptions)
+                        @foreach (var chapter in EternalChapterOptions)
                         {
                             <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                        }
+                        @foreach (var group in ChapterOptionGroups)
+                        {
+                            <optgroup label="@group.Key">
+                                @foreach (var chapter in group)
+                                {
+                                    <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                                }
+                            </optgroup>
                         }
                     </select>
                 </div>
                 <div class="col-md-5">
                     <select class="form-select" @onchange="OnStatusFilterChangedAsync">
                         <option value="">All statuses</option>
-                        @foreach (var status in Enum.GetValues<MemberStatus>())
+                        @foreach (var status in MemberOptionValues.Statuses)
                         {
-                            <option value="@((int)status)" selected="@(status == filterStatus)">@status</option>
+                            <option value="@((int)status)" selected="@(status == filterStatus)">@MemberOptionValues.DisplayStatus(status)</option>
                         }
                     </select>
                 </div>
@@ -67,7 +76,7 @@
                                 <span class="text-muted d-block">@member.LegalName</span>
                             </span>
                             <span class="badge text-bg-light">@member.ChapterAbbreviation</span>
-                            <span class="badge @StatusBadgeClass(member.Status)">@member.Status</span>
+                            <span class="badge @StatusBadgeClass(member.Status)">@MemberOptionValues.DisplayStatus(member.Status)</span>
                         </button>
                     }
                 }
@@ -124,22 +133,33 @@
                                 <label class="form-label" for="road-name">Road Name</label>
                                 <InputText id="road-name" class="form-control" @bind-Value="editModel.RoadName" />
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label class="form-label" for="dob">Date of Birth</label>
                                 <InputDate id="dob" class="form-control" @bind-Value="editModel.DateOfBirth" />
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="joined">Joined Date</label>
-                                <InputDate id="joined" class="form-control" @bind-Value="editModel.JoinedOn" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="status">Status</label>
-                                <InputSelect id="status" class="form-select" @bind-Value="editModel.Status">
-                                    @foreach (var status in Enum.GetValues<MemberStatus>())
+                            <div class="col-md-3">
+                                <label class="form-label" for="blood-type">Blood Type</label>
+                                <InputSelect id="blood-type" class="form-select" @bind-Value="editModel.BloodType">
+                                    <option value="">Not entered</option>
+                                    @foreach (var bloodType in MemberOptionValues.BloodTypes)
                                     {
-                                        <option value="@status">@status</option>
+                                        <option value="@bloodType">@bloodType</option>
                                     }
                                 </InputSelect>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="gender">Gender</label>
+                                <InputSelect id="gender" class="form-select" @bind-Value="editModel.Gender">
+                                    <option value="">Not entered</option>
+                                    @foreach (var gender in MemberOptionValues.Genders)
+                                    {
+                                        <option value="@gender">@gender</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="lifetime-date">Lifetime Date</label>
+                                <InputDate id="lifetime-date" class="form-control" @bind-Value="editModel.LifetimeDate" />
                             </div>
                             <div class="col-12">
                                 <label class="form-label" for="notes">Notes</label>
@@ -187,9 +207,18 @@
                                 <label class="form-label" for="primary-chapter">Primary Chapter</label>
                                 <InputSelect id="primary-chapter" class="form-select" @bind-Value="editModel.PrimaryChapterId">
                                     <option value="">Select chapter</option>
-                                    @foreach (var chapter in chapterOptions)
+                                    @foreach (var chapter in EternalChapterOptions)
                                     {
                                         <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                                    }
+                                    @foreach (var group in ChapterOptionGroups)
+                                    {
+                                        <optgroup label="@group.Key">
+                                            @foreach (var chapter in group)
+                                            {
+                                                <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                                            }
+                                        </optgroup>
                                     }
                                 </InputSelect>
                             </div>
@@ -234,6 +263,59 @@
                             </div>
                         }
                     }
+                    else if (activeTab == MemberEditorTab.Status)
+                    {
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="status">Status</label>
+                                <InputSelect id="status" class="form-select" @bind-Value="editModel.Status">
+                                    @foreach (var status in MemberOptionValues.Statuses)
+                                    {
+                                        <option value="@status">@MemberOptionValues.DisplayStatus(status)</option>
+                                    }
+                                </InputSelect>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="status-effective">Status Effective Date</label>
+                                <InputDate id="status-effective" class="form-control" @bind-Value="editModel.StatusEffectiveDate" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="status-notes">Status Notes</label>
+                                <InputText id="status-notes" class="form-control" @bind-Value="editModel.StatusNotes" />
+                            </div>
+                        </div>
+
+                        @if (statusHistory.Count == 0)
+                        {
+                            <p class="text-muted mt-3 mb-0">No status history yet.</p>
+                        }
+                        else
+                        {
+                            <div class="table-responsive log-table mt-3">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Status</th>
+                                            <th>Effective</th>
+                                            <th>Notes</th>
+                                            <th>Actor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var history in statusHistory)
+                                        {
+                                            <tr>
+                                                <td>@MemberOptionValues.DisplayStatus(history.Status)</td>
+                                                <td>@history.EffectiveDate.ToString("yyyy-MM-dd")</td>
+                                                <td>@(history.Notes ?? string.Empty)</td>
+                                                <td>@history.ActorName <span class="text-muted">(@history.ActorSource)</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
                     else if (activeTab == MemberEditorTab.MilitaryService)
                     {
                         <div class="d-flex justify-content-end mb-3">
@@ -251,7 +333,13 @@
                                     <div class="row g-3 align-items-end">
                                         <div class="col-md-3">
                                             <label class="form-label">Branch</label>
-                                            <InputText class="form-control" @bind-Value="record.Branch" />
+                                            <InputSelect class="form-select" @bind-Value="record.Branch">
+                                                <option value="">Select branch</option>
+                                                @foreach (var branch in MemberOptionValues.Branches)
+                                                {
+                                                    <option value="@branch">@branch</option>
+                                                }
+                                            </InputSelect>
                                         </div>
                                         <div class="col-md-3">
                                             <label class="form-label">Rank/Rate</label>
@@ -264,6 +352,26 @@
                                         <div class="col-md-2">
                                             <label class="form-label">End</label>
                                             <InputDate class="form-control" @bind-Value="record.ServiceEndDate" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Discharge Type</label>
+                                            <InputSelect class="form-select" @bind-Value="record.DischargeType">
+                                                <option value="">Not entered</option>
+                                                @foreach (var dischargeType in MemberOptionValues.DischargeTypes)
+                                                {
+                                                    <option value="@dischargeType">@dischargeType</option>
+                                                }
+                                            </InputSelect>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">Conflict Tab</label>
+                                            <InputSelect class="form-select" @bind-Value="record.ConflictTab">
+                                                <option value="">None</option>
+                                                @foreach (var conflictTab in MemberOptionValues.ConflictTabs)
+                                                {
+                                                    <option value="@conflictTab">@conflictTab</option>
+                                                }
+                                            </InputSelect>
                                         </div>
                                         <div class="col-md-2">
                                             <button type="button" class="btn btn-outline-danger w-100" @onclick="() => RemoveMilitaryService(record)">Remove</button>
@@ -379,6 +487,7 @@
     private IReadOnlyList<ChapterOption> chapterOptions = [];
     private IReadOnlyList<MemberLinkedAccountOption> linkedAccountOptions = [];
     private IReadOnlyList<MemberChapterAssignmentItem> chapterAssignments = [];
+    private IReadOnlyList<MemberStatusHistoryItem> statusHistory = [];
     private IReadOnlyList<MemberAuditLogItem> auditLogs = [];
     private MemberEditModel editModel = new();
     private Guid? selectedMemberId;
@@ -389,6 +498,11 @@
     private string statusClass = "alert-info";
     private string editorTitle = "Add Member";
     private MemberEditorTab activeTab = MemberEditorTab.Profile;
+    private IEnumerable<ChapterOption> EternalChapterOptions => chapterOptions.Where(chapter => IsEternalChapter(chapter.Abbreviation));
+    private IEnumerable<IGrouping<string, ChapterOption>> ChapterOptionGroups => chapterOptions
+        .Where(chapter => !IsEternalChapter(chapter.Abbreviation))
+        .GroupBy(chapter => chapter.StateName ?? "Other")
+        .OrderBy(group => group.Key);
 
     protected override async Task OnInitializedAsync()
     {
@@ -417,6 +531,7 @@
         editorTitle = $"Edit {MemberAdminService.DisplayName(member.FirstName, member.LastName, member.PreferredName, member.RoadName)}";
         linkedAccountOptions = await MemberService.GetLinkableAccountsAsync(editModel.ApplicationUserId);
         chapterAssignments = await MemberService.GetChapterAssignmentsAsync(id);
+        statusHistory = await MemberService.GetStatusHistoryAsync(id);
         auditLogs = await MemberService.GetAuditLogsAsync(id);
         ClearStatus();
     }
@@ -426,11 +541,13 @@
         selectedMemberId = null;
         editModel = new MemberEditModel
         {
-            PrimaryChapterId = chapterOptions.FirstOrDefault()?.Id,
-            ChapterEffectiveDate = DateOnly.FromDateTime(DateTime.Today)
+            PrimaryChapterId = chapterOptions.FirstOrDefault(chapter => !IsEternalChapter(chapter.Abbreviation))?.Id ?? chapterOptions.FirstOrDefault()?.Id,
+            ChapterEffectiveDate = DateOnly.FromDateTime(DateTime.Today),
+            StatusEffectiveDate = DateOnly.FromDateTime(DateTime.Today)
         };
         editorTitle = "Add Member";
         chapterAssignments = [];
+        statusHistory = [];
         auditLogs = [];
         activeTab = MemberEditorTab.Profile;
         ClearStatus();
@@ -528,6 +645,7 @@
             AuditAction.MilitaryServiceAdded => "Military Service Added",
             AuditAction.MilitaryServiceUpdated => "Military Service Updated",
             AuditAction.MilitaryServiceRemoved => "Military Service Removed",
+            AuditAction.MemberStatusChanged => "Status Changed",
             _ => action.ToString()
         };
     }
@@ -536,13 +654,19 @@
     {
         return status switch
         {
-            MemberStatus.Active => "text-bg-success",
-            MemberStatus.Prospect or MemberStatus.Probationary => "text-bg-info",
+            MemberStatus.PatchHolder => "text-bg-success",
+            MemberStatus.Prospect or MemberStatus.Probate => "text-bg-info",
             MemberStatus.Suspended => "text-bg-warning",
             MemberStatus.Deceased => "text-bg-dark",
-            MemberStatus.Resigned or MemberStatus.Expelled or MemberStatus.Inactive => "text-bg-secondary",
+            MemberStatus.Out or MemberStatus.Retired => "text-bg-secondary",
             _ => "text-bg-light"
         };
+    }
+
+    private static bool IsEternalChapter(string? abbreviation)
+    {
+        return string.Equals(abbreviation, "Chapter-100", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(abbreviation, "US-100", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ShowSuccess(string message)
@@ -579,6 +703,7 @@
         Profile,
         Contact,
         Chapter,
+        Status,
         MilitaryService,
         Audit
     }

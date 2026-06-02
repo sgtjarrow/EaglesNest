@@ -69,14 +69,17 @@ public class Member
     public string? State { get; set; }
     public string? PostalCode { get; set; }
     public DateOnly? DateOfBirth { get; set; }
+    public string? BloodType { get; set; }
+    public string? Gender { get; set; }
+    public DateOnly? LifetimeDate { get; set; }
     public MemberStatus Status { get; set; } = MemberStatus.Prospect;
     public Guid PrimaryChapterId { get; set; }
     public OrganizationUnit PrimaryChapter { get; set; } = null!;
-    public DateOnly? JoinedOn { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
     public ICollection<MemberChapterAssignment> ChapterAssignments { get; set; } = [];
+    public ICollection<MemberStatusHistory> StatusHistory { get; set; } = [];
     public ICollection<MilitaryServiceRecord> MilitaryServiceRecords { get; set; } = [];
 }
 
@@ -101,7 +104,23 @@ public class MilitaryServiceRecord
     public string? Rank { get; set; }
     public DateOnly? ServiceStartDate { get; set; }
     public DateOnly? ServiceEndDate { get; set; }
+    public string? DischargeType { get; set; }
+    public string? ConflictTab { get; set; }
     public string? ServiceNotes { get; set; }
+}
+
+public class MemberStatusHistory
+{
+    public Guid Id { get; set; }
+    public Guid MemberId { get; set; }
+    public Member Member { get; set; } = null!;
+    public MemberStatus Status { get; set; }
+    public DateOnly EffectiveDate { get; set; }
+    public string? Notes { get; set; }
+    public string? CreatedByUserId { get; set; }
+    public string ActorName { get; set; } = string.Empty;
+    public string ActorSource { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public class MemberChangeRequest

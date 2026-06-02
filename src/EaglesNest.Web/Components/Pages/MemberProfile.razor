@@ -27,7 +27,7 @@ else
             </div>
             <div class="text-end">
                 <span class="badge text-bg-light">@profile.ChapterAbbreviation</span>
-                <span class="badge @StatusBadgeClass(profile.Status)">@profile.Status</span>
+                <span class="badge @StatusBadgeClass(profile.Status)">@MemberOptionValues.DisplayStatus(profile.Status)</span>
             </div>
         </div>
 
@@ -48,10 +48,14 @@ else
                 <dl class="row">
                     <dt class="col-sm-4">Chapter</dt>
                     <dd class="col-sm-8">@profile.ChapterAbbreviation - @profile.ChapterName</dd>
-                    <dt class="col-sm-4">Joined</dt>
-                    <dd class="col-sm-8">@(profile.JoinedOn?.ToString("yyyy-MM-dd") ?? "Not entered")</dd>
                     <dt class="col-sm-4">DOB</dt>
                     <dd class="col-sm-8">@(profile.DateOfBirth?.ToString("yyyy-MM-dd") ?? "Not entered")</dd>
+                    <dt class="col-sm-4">Blood Type</dt>
+                    <dd class="col-sm-8">@Display(profile.BloodType)</dd>
+                    <dt class="col-sm-4">Gender</dt>
+                    <dd class="col-sm-8">@Display(profile.Gender)</dd>
+                    <dt class="col-sm-4">Lifetime Date</dt>
+                    <dd class="col-sm-8">@(profile.LifetimeDate?.ToString("yyyy-MM-dd") ?? "Not entered")</dd>
                 </dl>
             </div>
         </div>
@@ -72,6 +76,8 @@ else
                             <th>Rank/Rate</th>
                             <th>Start</th>
                             <th>End</th>
+                            <th>Discharge</th>
+                            <th>Conflict Tab</th>
                             <th>Notes</th>
                         </tr>
                     </thead>
@@ -83,6 +89,8 @@ else
                                 <td>@Display(record.Rank)</td>
                                 <td>@(record.ServiceStartDate?.ToString("yyyy-MM-dd") ?? "")</td>
                                 <td>@(record.ServiceEndDate?.ToString("yyyy-MM-dd") ?? "")</td>
+                                <td>@Display(record.DischargeType)</td>
+                                <td>@Display(record.ConflictTab)</td>
                                 <td>@record.ServiceNotes</td>
                             </tr>
                         }
@@ -137,11 +145,11 @@ else
     {
         return status switch
         {
-            MemberStatus.Active => "text-bg-success",
-            MemberStatus.Prospect or MemberStatus.Probationary => "text-bg-info",
+            MemberStatus.PatchHolder => "text-bg-success",
+            MemberStatus.Prospect or MemberStatus.Probate => "text-bg-info",
             MemberStatus.Suspended => "text-bg-warning",
             MemberStatus.Deceased => "text-bg-dark",
-            MemberStatus.Resigned or MemberStatus.Expelled or MemberStatus.Inactive => "text-bg-secondary",
+            MemberStatus.Out or MemberStatus.Retired => "text-bg-secondary",
             _ => "text-bg-light"
         };
     }

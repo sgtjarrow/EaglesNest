@@ -20,9 +20,13 @@ public sealed class MemberEditModel
     public string? State { get; set; }
     public string? PostalCode { get; set; }
     public DateOnly? DateOfBirth { get; set; }
+    public string? BloodType { get; set; }
+    public string? Gender { get; set; }
+    public DateOnly? LifetimeDate { get; set; }
     public MemberStatus Status { get; set; } = MemberStatus.Prospect;
     public Guid? PrimaryChapterId { get; set; }
-    public DateOnly? JoinedOn { get; set; }
+    public DateOnly? StatusEffectiveDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
+    public string? StatusNotes { get; set; }
     public string? Notes { get; set; }
     public DateOnly ChapterEffectiveDate { get; set; } = DateOnly.FromDateTime(DateTime.Today);
     public List<MilitaryServiceEditModel> MilitaryServiceRecords { get; set; } = [];

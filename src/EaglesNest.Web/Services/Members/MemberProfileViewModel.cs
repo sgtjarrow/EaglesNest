@@ -17,7 +17,9 @@ public sealed record MemberProfileViewModel
     public string? State { get; init; }
     public string? PostalCode { get; init; }
     public DateOnly? DateOfBirth { get; init; }
-    public DateOnly? JoinedOn { get; init; }
+    public string? BloodType { get; init; }
+    public string? Gender { get; init; }
+    public DateOnly? LifetimeDate { get; init; }
     public MemberStatus Status { get; init; }
     public string ChapterName { get; init; } = string.Empty;
     public string ChapterAbbreviation { get; init; } = string.Empty;
