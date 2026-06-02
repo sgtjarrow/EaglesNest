@@ -459,7 +459,7 @@ public static class ChapterSeeder
             ParentOrganizationUnitId = parentId,
             City = city,
             StateCode = stateCode,
-            Status = OrganizationStatus.Operating
+            Status = OrganizationStatus.Open
         };
         ApplySeedValues(unit, name, level, parentId, city, stateCode, mailingAddress);
 

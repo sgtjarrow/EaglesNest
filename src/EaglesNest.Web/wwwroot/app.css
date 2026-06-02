@@ -1,9 +1,11 @@
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    background: #050505;
+    color: #c6b79b;
 }
 
 a, .btn-link {
-    color: #006bb7;
+    color: #d6c5a1;
 }
 
 .btn-primary {
@@ -18,6 +20,30 @@ a, .btn-link {
 
 .content {
     padding-top: 1.1rem;
+    color: #c6b79b;
+}
+
+.admin-panel,
+.profile-panel {
+    background: #101010 !important;
+    border-color: #6f6049 !important;
+    color: #c6b79b;
+}
+
+.tab-panel,
+.service-row {
+    background: #101010;
+    border-color: #6f6049 !important;
+}
+
+.table {
+    --bs-table-bg: transparent;
+    --bs-table-color: #c6b79b;
+    --bs-table-border-color: #6f6049;
+}
+
+.text-muted {
+    color: #a99a80 !important;
 }
 
 h1:focus {

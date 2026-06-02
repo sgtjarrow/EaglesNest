@@ -399,7 +399,7 @@ public class MemberAdminServiceTests
             Abbreviation = abbreviation,
             Level = level,
             ParentOrganizationUnitId = parentId,
-            Status = OrganizationStatus.Operating
+            Status = OrganizationStatus.Open
         };
 
         dbContext.OrganizationUnits.Add(organization);

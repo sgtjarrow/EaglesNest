@@ -19,7 +19,7 @@ public class ChapterEditModel
 
     public Guid? ParentOrganizationUnitId { get; set; }
 
-    public OrganizationStatus Status { get; set; } = OrganizationStatus.Operating;
+    public OrganizationStatus Status { get; set; } = OrganizationStatus.Open;
 
     [StringLength(100)]
     public string? City { get; set; }

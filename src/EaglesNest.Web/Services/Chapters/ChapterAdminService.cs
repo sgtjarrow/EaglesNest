@@ -23,7 +23,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
     {
         var chapters = await dbContext.OrganizationUnits
             .AsNoTracking()
-            .Where(unit => includeUnavailable || unit.Status == OrganizationStatus.Operating)
+            .Where(unit => includeUnavailable || unit.Status == OrganizationStatus.Open)
             .OrderBy(unit => unit.Level)
             .ThenBy(unit => unit.Abbreviation)
             .Select(unit => new ChapterTreeItem
@@ -55,7 +55,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         foreach (var chapter in chapters.Where(item => item.Level == OrganizationLevel.State))
         {
-            if (chapter.Status == OrganizationStatus.Operating &&
+            if (chapter.Status == OrganizationStatus.Open &&
                 currentAssignments.TryGetValue(chapter.Id, out var assignment))
             {
                 chapter.ActingStateChapterId = assignment.LocalChapterOrganizationUnitId;
@@ -90,7 +90,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             .AsNoTracking()
             .Where(unit => unit.ParentOrganizationUnitId == stateOrganizationUnitId &&
                            unit.Level == OrganizationLevel.LocalChapter &&
-                           unit.Status == OrganizationStatus.Operating)
+                           unit.Status == OrganizationStatus.Open)
             .OrderBy(unit => unit.Abbreviation)
             .Select(unit => new ChapterTreeItem
             {
@@ -196,7 +196,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
     public async Task<ChapterSaveResult> CreateAsync(ChapterEditModel input, ChapterActor actor)
     {
         Normalize(input);
-        input.Status = OrganizationStatus.Operating;
+        input.Status = OrganizationStatus.Open;
 
         var validation = await ValidateAsync(input, null);
         if (validation.Count > 0)
@@ -211,7 +211,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             Abbreviation = input.Abbreviation,
             Level = input.Level,
             ParentOrganizationUnitId = input.ParentOrganizationUnitId,
-            Status = OrganizationStatus.Operating,
+            Status = OrganizationStatus.Open,
             City = input.City,
             StateCode = input.StateCode,
             MailingAddressLine1 = input.MailingAddressLine1,
@@ -233,7 +233,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
             if (parentState?.Status == OrganizationStatus.Closed)
             {
-                parentState.Status = OrganizationStatus.Operating;
+                parentState.Status = OrganizationStatus.Open;
                 AddAudit(AuditAction.Reopened, parentState, actor, new
                 {
                     parentState.Id,
@@ -362,7 +362,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             return ChapterSaveResult.Failure("Chapter was not found.");
         }
 
-        organization.Status = OrganizationStatus.Operating;
+        organization.Status = OrganizationStatus.Open;
         AddAudit(AuditAction.Reopened, organization, actor, new { organization.Id, organization.Status });
 
         if (organization.Level == OrganizationLevel.LocalChapter &&
@@ -445,7 +445,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         }
 
         suspension.EndsOn = endsOn;
-        organization.Status = OrganizationStatus.Operating;
+        organization.Status = OrganizationStatus.Open;
         AddAudit(AuditAction.SuspensionEnded, organization, actor, new { organization.Id, EndsOn = endsOn });
         await dbContext.SaveChangesAsync();
         return ChapterSaveResult.Success(organization.Id);
@@ -529,7 +529,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
             return;
         }
 
-        state.Status = OrganizationStatus.Operating;
+        state.Status = OrganizationStatus.Open;
         AddAudit(AuditAction.Reopened, state, actor, new
         {
             state.Id,
@@ -599,7 +599,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         if (input.Level == OrganizationLevel.National)
         {
-            if (input.Status != OrganizationStatus.Operating)
+            if (input.Status != OrganizationStatus.Open)
             {
                 errors.Add("National must remain operating.");
             }
@@ -679,7 +679,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         if (input.Level == OrganizationLevel.National)
         {
             input.ParentOrganizationUnitId = null;
-            input.Status = OrganizationStatus.Operating;
+            input.Status = OrganizationStatus.Open;
             input.City = null;
             input.StateCode = null;
         }

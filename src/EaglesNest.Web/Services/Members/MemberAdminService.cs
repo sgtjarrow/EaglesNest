@@ -179,7 +179,7 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             var chapters = await dbContext.OrganizationUnits
                 .AsNoTracking()
                 .Where(unit => unit.Level == OrganizationLevel.LocalChapter &&
-                               unit.Status == OrganizationStatus.Operating)
+                               unit.Status == OrganizationStatus.Open)
                 .Select(unit => new
                 {
                     unit.Id,

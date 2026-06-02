@@ -17,7 +17,7 @@ public class OrganizationUnit
     public string? MailingCity { get; set; }
     public string? MailingStateCode { get; set; }
     public string? MailingPostalCode { get; set; }
-    public OrganizationStatus Status { get; set; } = OrganizationStatus.Operating;
+    public OrganizationStatus Status { get; set; } = OrganizationStatus.Open;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 

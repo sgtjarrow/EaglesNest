@@ -59,7 +59,7 @@ public class ChapterAdminServiceTests
         await using var dbContext = CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         AddOrganization(dbContext, "Georgia", "GA", OrganizationLevel.State, national.Id, OrganizationStatus.Closed);
-        AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id, OrganizationStatus.Operating);
+        AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id, OrganizationStatus.Open);
         await dbContext.SaveChangesAsync();
 
         var service = new ChapterAdminService(dbContext);
@@ -83,7 +83,7 @@ public class ChapterAdminServiceTests
         var result = await service.CloseAsync(national.Id, TestActor);
 
         Assert.False(result.Succeeded);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == national.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == national.Id)).Status);
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class ChapterAdminServiceTests
 
         Assert.False((await service.CloseAsync(eternal.Id, TestActor)).Succeeded);
         Assert.False((await service.SuspendAsync(eternal.Id, DateOnly.FromDateTime(DateTime.UtcNow), null, null, TestActor)).Succeeded);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == eternal.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == eternal.Id)).Status);
     }
 
     [Fact]
@@ -117,8 +117,8 @@ public class ChapterAdminServiceTests
         Assert.Equal(OrganizationStatus.Closed, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
 
         Assert.True((await service.ReopenAsync(chapter.Id, TestActor)).Succeeded);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public class ChapterAdminServiceTests
     }
 
     [Fact]
-    public async Task CloseAsync_LeavesParentStateOperatingWhenSuspendedChapterRemains()
+    public async Task CloseAsync_LeavesParentStateOpenWhenSuspendedChapterRemains()
     {
         await using var dbContext = CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
@@ -190,7 +190,7 @@ public class ChapterAdminServiceTests
 
         Assert.True((await service.CloseAsync(chapter.Id, TestActor)).Succeeded);
 
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
     }
 
     [Fact]
@@ -206,8 +206,8 @@ public class ChapterAdminServiceTests
 
         Assert.True((await service.ReopenAsync(chapter.Id, TestActor)).Succeeded);
 
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
     }
 
     [Fact]
@@ -239,7 +239,7 @@ public class ChapterAdminServiceTests
         }, TestActor);
 
         Assert.True(result.Succeeded);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == state.Id)).Status);
 
         var currentAssignment = await dbContext.StateChapterAssignments.SingleAsync(assignment => assignment.EndsOn == null);
         Assert.Equal(result.ChapterId, currentAssignment.LocalChapterOrganizationUnitId);
@@ -266,7 +266,7 @@ public class ChapterAdminServiceTests
         Assert.True((await service.EndSuspensionAsync(chapter.Id, endsOn, TestActor)).Succeeded);
         var suspension = await dbContext.ChapterSuspensions.SingleAsync();
         Assert.Equal(endsOn, suspension.EndsOn);
-        Assert.Equal(OrganizationStatus.Operating, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
+        Assert.Equal(OrganizationStatus.Open, (await dbContext.OrganizationUnits.SingleAsync(unit => unit.Id == chapter.Id)).Status);
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public class ChapterAdminServiceTests
         string abbreviation,
         OrganizationLevel level,
         Guid? parentId,
-        OrganizationStatus status = OrganizationStatus.Operating)
+        OrganizationStatus status = OrganizationStatus.Open)
     {
         var organization = new OrganizationUnit
         {

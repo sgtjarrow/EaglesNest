@@ -52,7 +52,7 @@
                     {
                         var selected = row.Item.Id == selectedChapterId;
                         <button type="button"
-                                class="chapter-row @(selected ? "selected" : null) @(row.Item.Status == OrganizationStatus.Operating ? null : "unavailable")"
+                                class="chapter-row @(selected ? "selected" : null) @(row.Item.Status == OrganizationStatus.Open ? null : "unavailable")"
                                 style="--indent:@row.Depth"
                                 @onclick="() => SelectChapter(row.Item.Id)">
                             <span class="chapter-name">@row.Item.Name</span>
@@ -61,12 +61,12 @@
                             {
                                 <span class="chapter-meta">@DisplayLevel(row.Item.Level)</span>
                             }
-                            @if (row.Item.Status != OrganizationStatus.Operating)
+                            @if (row.Item.Status != OrganizationStatus.Open)
                             {
                                 <span class="badge @StatusBadgeClass(row.Item.Status)">@row.Item.Status</span>
                             }
                             @if (row.Item.Level == OrganizationLevel.State &&
-                                                    row.Item.Status == OrganizationStatus.Operating &&
+                                                    row.Item.Status == OrganizationStatus.Open &&
                                                     row.Item.ActingStateChapterAbbreviation is not null)
                             {
                                 <span class="chapter-meta state-assignment">@row.Item.ActingStateChapterAbbreviation</span>
@@ -457,7 +457,7 @@
                                              !IsEternalChapter;
     private bool CanSuspendSelected => editModel.Id is not null &&
                                        editModel.Level == OrganizationLevel.LocalChapter &&
-                                       editModel.Status == OrganizationStatus.Operating &&
+                                       editModel.Status == OrganizationStatus.Open &&
                                        !IsEternalChapter;
     private bool CanEndSuspensionSelected => editModel.Id is not null &&
                                              editModel.Level == OrganizationLevel.LocalChapter &&
@@ -582,7 +582,7 @@
         {
             Level = OrganizationLevel.State,
             ParentOrganizationUnitId = national?.Id,
-            Status = OrganizationStatus.Operating
+            Status = OrganizationStatus.Open
         };
         editorTitle = "Add State";
         currentSuspension = null;
@@ -608,7 +608,7 @@
             Level = OrganizationLevel.LocalChapter,
             ParentOrganizationUnitId = selectedState.Id,
             StateCode = selectedState.StateCode,
-            Status = OrganizationStatus.Operating
+            Status = OrganizationStatus.Open
         };
         editorTitle = $"Add Chapter Under {selectedState.Name}";
         currentSuspension = null;
@@ -840,7 +840,7 @@
     {
         return status switch
         {
-            OrganizationStatus.Operating => "text-bg-success",
+            OrganizationStatus.Open => "text-bg-success",
             OrganizationStatus.Suspended => "text-bg-warning",
             OrganizationStatus.Closed => "text-bg-secondary",
             _ => "text-bg-light"
