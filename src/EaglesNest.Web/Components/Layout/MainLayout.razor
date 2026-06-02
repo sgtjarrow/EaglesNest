@@ -1,4 +1,5 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject IWebHostEnvironment Environment
 
 <div class="page">
     <div class="sidebar">
@@ -11,7 +12,34 @@
         </div>
 
         <article class="content px-4">
-            @Body
+            <ErrorBoundary @ref="errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="exception">
+                    <div class="alert alert-danger app-error" role="alert">
+                        <h2 class="h5">An unhandled error occurred.</h2>
+                        @if (Environment.IsDevelopment())
+                        {
+                            <p><strong>Type:</strong> @exception.GetType().FullName</p>
+                            <p><strong>Message:</strong> @exception.Message</p>
+                            @if (exception.InnerException is not null)
+                            {
+                                <p><strong>Inner:</strong> @exception.InnerException.Message</p>
+                            }
+                            <details>
+                                <summary>Stack trace</summary>
+                                <pre>@exception.ToString()</pre>
+                            </details>
+                        }
+                        else
+                        {
+                            <p>Reload the page and try again. If the problem continues, contact an administrator.</p>
+                        }
+                        <button type="button" class="btn btn-outline-danger btn-sm" @onclick="RecoverFromError">Clear Error</button>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </article>
     </main>
 </div>
@@ -19,5 +47,19 @@
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <span class="dismiss">x</span>
 </div>
+
+@code {
+    private ErrorBoundary? errorBoundary;
+
+    protected override void OnParametersSet()
+    {
+        errorBoundary?.Recover();
+    }
+
+    private void RecoverFromError()
+    {
+        errorBoundary?.Recover();
+    }
+}

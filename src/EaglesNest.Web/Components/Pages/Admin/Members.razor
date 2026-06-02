@@ -8,6 +8,7 @@
 
 @inject MemberAdminService MemberService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IWebHostEnvironment Environment
 
 <PageTitle>Members</PageTitle>
 
@@ -244,10 +245,9 @@
                         }
                         else
                         {
-                            @for (var index = 0; index < editModel.MilitaryServiceRecords.Count; index++)
+                            @foreach (var record in editModel.MilitaryServiceRecords)
                             {
-                                var record = editModel.MilitaryServiceRecords[index];
-                                <div class="service-row">
+                                <div class="service-row" @key="record">
                                     <div class="row g-3 align-items-end">
                                         <div class="col-md-3">
                                             <label class="form-label">Branch</label>
@@ -438,24 +438,31 @@
 
     private async Task SaveAsync()
     {
-        var actor = await GetCurrentActorAsync();
-        var result = editModel.Id is Guid id
-            ? await MemberService.UpdateAsync(id, editModel, actor)
-            : await MemberService.CreateAsync(editModel, actor);
-
-        if (!result.Succeeded)
+        try
         {
-            ShowError(string.Join(" ", result.Errors));
-            return;
-        }
+            var actor = await GetCurrentActorAsync();
+            var result = editModel.Id is Guid id
+                ? await MemberService.UpdateAsync(id, editModel, actor)
+                : await MemberService.CreateAsync(editModel, actor);
 
-        await LoadAsync();
-        if (result.MemberId is Guid savedId)
+            if (!result.Succeeded)
+            {
+                ShowError(string.Join(" ", result.Errors));
+                return;
+            }
+
+            await LoadAsync();
+            if (result.MemberId is Guid savedId)
+            {
+                await SelectMemberAsync(savedId);
+            }
+
+            ShowSuccess("Member saved.");
+        }
+        catch (Exception ex)
         {
-            await SelectMemberAsync(savedId);
+            ShowError(BuildUnexpectedErrorMessage(ex));
         }
-
-        ShowSuccess("Member saved.");
     }
 
     private async Task CancelEditAsync()
@@ -548,6 +555,17 @@
     {
         statusMessage = message;
         statusClass = "alert-danger";
+    }
+
+    private string BuildUnexpectedErrorMessage(Exception ex)
+    {
+        if (!Environment.IsDevelopment())
+        {
+            return "An unexpected error occurred while saving the member.";
+        }
+
+        var baseException = ex.GetBaseException();
+        return $"Unexpected save error: {baseException.GetType().Name}: {baseException.Message}";
     }
 
     private void ClearStatus()
