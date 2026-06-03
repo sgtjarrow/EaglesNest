@@ -14,8 +14,9 @@ public class OfficerPermissionServiceTests
     [Fact]
     public async Task LoginWithoutLinkedMember_HasNoOfficerPermissions()
     {
-        await using var dbContext = CreateDbContext();
-        var service = new OfficerPermissionService(dbContext);
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
+        var service = new OfficerPermissionService(database);
 
         var permissions = await service.GetPermissionsAsync("missing-login");
 
@@ -27,12 +28,13 @@ public class OfficerPermissionServiceTests
     [Fact]
     public async Task SystemAdminMember_HasFullAccess()
     {
-        await using var dbContext = CreateDbContext();
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         var member = AddMember(dbContext, "super-login", "Super", "Admin", national.Id);
         AddRole(dbContext, member.Id, national.Id, OfficerPosition.SystemAdmin);
         await dbContext.SaveChangesAsync();
-        var service = new OfficerPermissionService(dbContext);
+        var service = new OfficerPermissionService(database);
 
         var permissions = await service.GetPermissionsAsync("super-login");
 
@@ -45,7 +47,8 @@ public class OfficerPermissionServiceTests
     [Fact]
     public async Task ActingStateSecretary_CanViewChildChapterMembersButCannotEdit()
     {
-        await using var dbContext = CreateDbContext();
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
         var (national, state, actingChapter, childChapter) = AddStateSetup(dbContext);
         var secretary = AddMember(dbContext, "sec-login", "State", "Secretary", actingChapter.Id);
         AddRole(dbContext, secretary.Id, actingChapter.Id, OfficerPosition.Secretary);
@@ -59,7 +62,7 @@ public class OfficerPermissionServiceTests
             ActorSource = "Test"
         });
         await dbContext.SaveChangesAsync();
-        var service = new OfficerPermissionService(dbContext);
+        var service = new OfficerPermissionService(database);
 
         var permissions = await service.GetPermissionsAsync("sec-login");
 
@@ -73,14 +76,15 @@ public class OfficerPermissionServiceTests
     [Fact]
     public async Task AddAssignmentAsync_WritesMemberAuditEntry()
     {
-        await using var dbContext = CreateDbContext();
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         var member = AddMember(dbContext, "target-login", "Target", "Member", national.Id);
         var adminMember = AddMember(dbContext, "admin-login", "Admin", "Member", national.Id);
         AddRole(dbContext, adminMember.Id, national.Id, OfficerPosition.SystemAdmin);
         await dbContext.SaveChangesAsync();
 
-        var permissions = await new OfficerPermissionService(dbContext).GetPermissionsAsync("admin-login");
+        var permissions = await new OfficerPermissionService(database).GetPermissionsAsync("admin-login");
         var service = new RoleAdminService(dbContext);
 
         var result = await service.AddAssignmentAsync(member.Id, OfficerPosition.President, national.Id, permissions, TestActor);
@@ -96,13 +100,13 @@ public class OfficerPermissionServiceTests
             log.Action == AuditAction.RoleAssignmentCreated));
     }
 
-    private static ApplicationDbContext CreateDbContext()
+    private static TestDbContextFactory CreateDatabase()
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        return new ApplicationDbContext(options);
+        return new TestDbContextFactory(options);
     }
 
     private static (OrganizationUnit National, OrganizationUnit State, OrganizationUnit ActingChapter, OrganizationUnit ChildChapter) AddStateSetup(ApplicationDbContext dbContext)
@@ -164,5 +168,13 @@ public class OfficerPermissionServiceTests
 
         dbContext.RoleAssignments.Add(role);
         return role;
+    }
+
+    private sealed class TestDbContextFactory(DbContextOptions<ApplicationDbContext> options) : IDbContextFactory<ApplicationDbContext>
+    {
+        public ApplicationDbContext CreateDbContext()
+        {
+            return new ApplicationDbContext(options);
+        }
     }
 }

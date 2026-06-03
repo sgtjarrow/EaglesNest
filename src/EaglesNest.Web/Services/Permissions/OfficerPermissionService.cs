@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace EaglesNest.Web.Services.Permissions;
 
-public class OfficerPermissionService(ApplicationDbContext dbContext)
+public class OfficerPermissionService(IDbContextFactory<ApplicationDbContext> dbContextFactory)
 {
     private static readonly OfficerPosition[] EditPositions =
     [
@@ -19,6 +19,7 @@ public class OfficerPermissionService(ApplicationDbContext dbContext)
             return new OfficerPermissionContext();
         }
 
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
         var member = await dbContext.Members
             .AsNoTracking()
             .Include(existing => existing.PrimaryChapter)
@@ -76,7 +77,7 @@ public class OfficerPermissionService(ApplicationDbContext dbContext)
         var canEditAllChapters = false;
         var canManageAllRoles = false;
 
-        var chapterIdsByState = await GetLocalChapterIdsByStateAsync();
+        var chapterIdsByState = await GetLocalChapterIdsByStateAsync(dbContext);
         var actingStateChapterIds = await dbContext.StateChapterAssignments
             .AsNoTracking()
             .Where(assignment => assignment.EndsOn == null)
@@ -163,7 +164,7 @@ public class OfficerPermissionService(ApplicationDbContext dbContext)
         };
     }
 
-    private async Task<Dictionary<Guid, List<Guid>>> GetLocalChapterIdsByStateAsync()
+    private static async Task<Dictionary<Guid, List<Guid>>> GetLocalChapterIdsByStateAsync(ApplicationDbContext dbContext)
     {
         var chapters = await dbContext.OrganizationUnits
             .AsNoTracking()
