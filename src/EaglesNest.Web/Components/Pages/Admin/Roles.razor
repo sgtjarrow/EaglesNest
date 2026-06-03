@@ -133,7 +133,7 @@ else
                             <select id="chapter" class="form-select" @onchange="OnSelectedChapterChangedAsync">
                                 @foreach (var chapter in NationalChapterOptions)
                                 {
-                                    <option value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                                    <option class="chapter-option-emphasis" value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                                 }
                                 @foreach (var group in ChapterOptionGroups)
                                 {
@@ -146,7 +146,7 @@ else
                                 }
                                 @foreach (var chapter in EternalChapterOptions)
                                 {
-                                    <option value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                                    <option class="chapter-option-emphasis" value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                                 }
                             </select>
                         </div>
@@ -226,6 +226,10 @@ else
     .role-member-row:hover .text-muted,
     .role-member-row.selected .text-muted {
         color: #111 !important;
+    }
+
+    .chapter-option-emphasis {
+        font-weight: 700;
     }
 </style>
 

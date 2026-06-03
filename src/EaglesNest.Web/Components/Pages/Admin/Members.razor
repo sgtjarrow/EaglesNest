@@ -52,7 +52,7 @@ else
                         <option value="">All chapters</option>
                         @foreach (var chapter in NationalChapterOptions)
                         {
-                            <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                            <option class="chapter-option-emphasis" value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                         }
                         @foreach (var group in FilterChapterOptionGroups)
                         {
@@ -62,6 +62,10 @@ else
                                     <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                                 }
                             </optgroup>
+                        }
+                        @foreach (var chapter in EternalChapterOptions)
+                        {
+                            <option class="chapter-option-emphasis" value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                         }
                     </select>
                 </div>
@@ -226,7 +230,7 @@ else
                                     <option value="">Select chapter</option>
                                     @foreach (var chapter in PrimaryNationalChapterOptions)
                                     {
-                                        <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                                        <option class="chapter-option-emphasis" value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
                                     }
                                     @foreach (var group in PrimaryChapterOptionGroups)
                                     {
@@ -236,6 +240,10 @@ else
                                                 <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
                                             }
                                         </optgroup>
+                                    }
+                                    @foreach (var chapter in PrimaryEternalChapterOptions)
+                                    {
+                                        <option class="chapter-option-emphasis" value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
                                     }
                                 </InputSelect>
                             </div>
@@ -514,6 +522,10 @@ else
     .log-table {
         max-height: 18rem;
         overflow: auto;
+    }
+
+    .chapter-option-emphasis {
+        font-weight: 700;
     }
 </style>
 
@@ -815,11 +827,3 @@ else
         Audit
     }
 }
-                        @foreach (var chapter in EternalChapterOptions)
-                        {
-                            <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
-                        }
-                                    @foreach (var chapter in PrimaryEternalChapterOptions)
-                                    {
-                                        <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
-                                    }

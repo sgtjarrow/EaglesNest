@@ -64,7 +64,7 @@ else
                     {
                         var selected = row.Item.Id == selectedChapterId;
                         <button type="button"
-                                class="chapter-row @(selected ? "selected" : null) @(row.Item.Status == OrganizationStatus.Open ? null : "unavailable")"
+                                class="chapter-row @(selected ? "selected" : null) @(row.Item.Status == OrganizationStatus.Open ? null : "unavailable") @(IsEmphasizedChapterRow(row.Item) ? "emphasized" : null)"
                                 style="--indent:@row.Depth"
                                 @onclick="() => SelectChapter(row.Item.Id)">
                             <span class="chapter-name">@row.Item.Name</span>
@@ -407,7 +407,11 @@ else
     }
 
     .chapter-name {
-        font-weight: 600;
+        font-weight: 500;
+    }
+
+    .chapter-row.emphasized .chapter-name {
+        font-weight: 700;
     }
 
     .chapter-meta {
@@ -942,6 +946,12 @@ else
     private static string DisplayLevel(OrganizationLevel level)
     {
         return level == OrganizationLevel.LocalChapter ? "Local" : level.ToString();
+    }
+
+    private static bool IsEmphasizedChapterRow(ChapterTreeItem chapter)
+    {
+        return chapter.Level is OrganizationLevel.National or OrganizationLevel.State ||
+               ChapterAdminService.IsEternalChapter(chapter.Abbreviation);
     }
 
     private static string StatusBadgeClass(OrganizationStatus status)
