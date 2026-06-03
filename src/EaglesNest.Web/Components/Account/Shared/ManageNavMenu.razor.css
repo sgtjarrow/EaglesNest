@@ -1,0 +1,29 @@
+.nav-pills {
+    gap: .35rem;
+    padding: .75rem;
+    border: 1px solid #6f6049;
+    border-radius: 8px;
+    background: #050505;
+}
+
+.nav-item {
+    margin: 0;
+}
+
+.nav-link {
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    color: #c6b79b;
+}
+
+.nav-link:hover {
+    background-color: rgba(139, 122, 94, 0.2);
+    color: #f2eadb;
+}
+
+.nav-link.active {
+    background-color: rgba(139, 122, 94, 0.35);
+    color: #f2eadb;
+}

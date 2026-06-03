@@ -4,6 +4,7 @@
 @using EaglesNest.Core.Domain
 @using EaglesNest.Web.Services.Chapters
 @using EaglesNest.Web.Services.Permissions
+@using EaglesNest.Web.Services
 @using Microsoft.AspNetCore.Authorization
 
 @attribute [Authorize]
@@ -11,6 +12,7 @@
 @inject ChapterAdminService ChapterService
 @inject OfficerPermissionService PermissionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject AuditActorResolver ActorResolver
 
 <PageTitle>Chapters</PageTitle>
 
@@ -65,7 +67,7 @@ else
                         var selected = row.Item.Id == selectedChapterId;
                         <button type="button"
                                 class="chapter-row @(selected ? "selected" : null) @(row.Item.Status == OrganizationStatus.Open ? null : "unavailable") @(IsEmphasizedChapterRow(row.Item) ? "emphasized" : null)"
-                                style="--indent:@row.Depth"
+                                style="--indent:@DisplayIndent(row)"
                                 @onclick="() => SelectChapter(row.Item.Id)">
                             <span class="chapter-name">@row.Item.Name</span>
                             <span class="badge text-bg-light">@row.Item.Abbreviation</span>
@@ -134,7 +136,13 @@ else
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="org-state-code">State Code</label>
-                                <InputText id="org-state-code" class="form-control text-uppercase" @bind-Value="editModel.StateCode" />
+                                <InputSelect id="org-state-code" class="form-select" @bind-Value="editModel.StateCode">
+                                    <option value="">Select State</option>
+                                    @foreach (var state in UsStateOptions.PostalAbbreviations)
+                                    {
+                                        <option value="@state">@state</option>
+                                    }
+                                </InputSelect>
                             </div>
                         }
                         <div class="col-md-4">
@@ -160,7 +168,13 @@ else
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label" for="org-mailing-state">State</label>
-                                <InputText id="org-mailing-state" class="form-control text-uppercase" @bind-Value="editModel.MailingStateCode" />
+                                <InputSelect id="org-mailing-state" class="form-select" @bind-Value="editModel.MailingStateCode">
+                                    <option value="">Select State</option>
+                                    @foreach (var state in UsStateOptions.PostalAbbreviations)
+                                    {
+                                        <option value="@state">@state</option>
+                                    }
+                                </InputSelect>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label" for="org-mailing-postal">ZIP Code</label>
@@ -906,10 +920,7 @@ else
     private async Task<ChapterActor> GetCurrentActorAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = state.User;
-        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var actorName = user.Identity?.Name ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown User";
-        return new ChapterActor(userId, actorName, "User");
+        return await ActorResolver.ResolveChapterActorAsync(state.User);
     }
 
     private async Task<OfficerPermissionContext> GetPermissionsAsync()
@@ -952,6 +963,14 @@ else
     {
         return chapter.Level is OrganizationLevel.National or OrganizationLevel.State ||
                ChapterAdminService.IsEternalChapter(chapter.Abbreviation);
+    }
+
+    private static int DisplayIndent(ChapterDisplayRow row)
+    {
+        return row.Item.Level == OrganizationLevel.LocalChapter &&
+               !ChapterAdminService.IsEternalChapter(row.Item.Abbreviation)
+            ? 1
+            : 0;
     }
 
     private static string StatusBadgeClass(OrganizationStatus status)

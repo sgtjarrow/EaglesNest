@@ -61,6 +61,26 @@ else
         </div>
 
         <hr />
+        <h3 class="h5">Officer Roles</h3>
+        @if (!profile.IsSystemAdmin && profile.OfficerRoles.Count == 0)
+        {
+            <p class="text-muted mb-0">No officer roles assigned.</p>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap gap-2">
+                @if (profile.IsSystemAdmin)
+                {
+                    <span class="badge text-bg-primary">SystemAdmin</span>
+                }
+                @foreach (var role in profile.OfficerRoles)
+                {
+                    <span class="badge text-bg-light">@role.Position - @role.ChapterAbbreviation</span>
+                }
+            </div>
+        }
+
+        <hr />
         <h3 class="h5">Military Service</h3>
         @if (profile.MilitaryServiceRecords.Count == 0)
         {

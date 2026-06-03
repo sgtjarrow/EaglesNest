@@ -4,6 +4,7 @@
 @using EaglesNest.Web.Services.Members
 @using EaglesNest.Web.Services.Chapters
 @using EaglesNest.Web.Services.Permissions
+@using EaglesNest.Web.Services
 @using Microsoft.AspNetCore.Authorization
 
 @attribute [Authorize]
@@ -12,6 +13,7 @@
 @inject OfficerPermissionService PermissionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IWebHostEnvironment Environment
+@inject AuditActorResolver ActorResolver
 
 <PageTitle>Members</PageTitle>
 
@@ -72,9 +74,14 @@ else
                 <div class="col-md-5">
                     <select class="form-select" @onchange="OnStatusFilterChangedAsync">
                         <option value="">All statuses</option>
-                        @foreach (var status in MemberOptionValues.Statuses)
+                        @foreach (var group in MemberOptionValues.StatusGroups)
                         {
-                            <option value="@((int)status)" selected="@(status == filterStatus)">@MemberOptionValues.DisplayStatus(status)</option>
+                            <optgroup label="@group.Label">
+                                @foreach (var status in group.Statuses)
+                                {
+                                    <option value="@((int)status)" selected="@(status == filterStatus)">@MemberOptionValues.DisplayStatus(status)</option>
+                                }
+                            </optgroup>
                         }
                     </select>
                 </div>
@@ -294,9 +301,14 @@ else
                             <div class="col-md-4">
                                 <label class="form-label" for="status">Status</label>
                                 <InputSelect id="status" class="form-select" @bind-Value="editModel.Status">
-                                    @foreach (var status in MemberOptionValues.Statuses)
+                                    @foreach (var group in MemberOptionValues.StatusGroups)
                                     {
-                                        <option value="@status">@MemberOptionValues.DisplayStatus(status)</option>
+                                        <optgroup label="@group.Label">
+                                            @foreach (var status in group.Statuses)
+                                            {
+                                                <option value="@status">@MemberOptionValues.DisplayStatus(status)</option>
+                                            }
+                                        </optgroup>
                                     }
                                 </InputSelect>
                             </div>
@@ -724,10 +736,7 @@ else
     private async Task<MemberActor> GetCurrentActorAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = state.User;
-        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var actorName = user.Identity?.Name ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown User";
-        return new MemberActor(userId, actorName, "User");
+        return await ActorResolver.ResolveMemberActorAsync(state.User);
     }
 
     private async Task<OfficerPermissionContext> GetPermissionsAsync()

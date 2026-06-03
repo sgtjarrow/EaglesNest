@@ -23,5 +23,12 @@ public sealed record MemberProfileViewModel
     public MemberStatus Status { get; init; }
     public string ChapterName { get; init; } = string.Empty;
     public string ChapterAbbreviation { get; init; } = string.Empty;
+    public bool IsSystemAdmin { get; init; }
+    public IReadOnlyList<MemberProfileRoleItem> OfficerRoles { get; init; } = [];
     public IReadOnlyList<MilitaryServiceEditModel> MilitaryServiceRecords { get; init; } = [];
 }
+
+public sealed record MemberProfileRoleItem(
+    string Position,
+    string ChapterName,
+    string ChapterAbbreviation);

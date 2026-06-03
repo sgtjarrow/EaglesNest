@@ -6,6 +6,7 @@
 @using EaglesNest.Web.Services.Members
 @using EaglesNest.Web.Services.Permissions
 @using EaglesNest.Web.Services.Roles
+@using EaglesNest.Web.Services
 @using Microsoft.AspNetCore.Authorization
 
 @attribute [Authorize]
@@ -13,6 +14,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject OfficerPermissionService PermissionService
 @inject RoleAdminService RoleService
+@inject AuditActorResolver ActorResolver
 
 <PageTitle>Officer Roles</PageTitle>
 
@@ -378,10 +380,7 @@ else
     private async Task<MemberActor> BuildActorAsync()
     {
         var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var user = state.User;
-        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var actorName = user.Identity?.Name ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown User";
-        return new MemberActor(userId, actorName, "User");
+        return await ActorResolver.ResolveMemberActorAsync(state.User);
     }
 
     private static bool IsNationalChapter(string? abbreviation)

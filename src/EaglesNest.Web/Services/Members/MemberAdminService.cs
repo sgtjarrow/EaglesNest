@@ -3,6 +3,7 @@ using System.Text.Json;
 using EaglesNest.Core.Domain;
 using EaglesNest.Web.Data;
 using EaglesNest.Web.Services.Chapters;
+using EaglesNest.Web.Services.Roles;
 using Microsoft.EntityFrameworkCore;
 
 namespace EaglesNest.Web.Services.Members;
@@ -155,7 +156,27 @@ public class MemberAdminService(ApplicationDbContext dbContext, ChapterAdminServ
                 .Include(existing => existing.MilitaryServiceRecords)
                 .SingleOrDefaultAsync(existing => existing.ApplicationUserId == applicationUserId);
 
-            return member is null ? null : ToProfile(member);
+            if (member is null)
+            {
+                return null;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var roles = await dbContext.RoleAssignments
+                .AsNoTracking()
+                .Include(assignment => assignment.OrganizationUnit)
+                .Where(assignment => assignment.MemberId == member.Id &&
+                                     (assignment.ExpiresAt == null || assignment.ExpiresAt > now))
+                .OrderBy(assignment => assignment.OrganizationUnit.Level == OrganizationLevel.National ? 0 : 1)
+                .ThenBy(assignment => assignment.OrganizationUnit.Abbreviation)
+                .ThenBy(assignment => assignment.Position)
+                .Select(assignment => new MemberProfileRoleItem(
+                    RoleAdminService.DisplayPosition(assignment.Position),
+                    assignment.OrganizationUnit.Name,
+                    assignment.OrganizationUnit.Abbreviation))
+                .ToListAsync();
+
+            return ToProfile(member, roles);
         });
     }
 
@@ -813,7 +834,7 @@ public class MemberAdminService(ApplicationDbContext dbContext, ChapterAdminServ
         return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.ToLowerInvariant());
     }
 
-    private static MemberProfileViewModel ToProfile(Member member)
+    private static MemberProfileViewModel ToProfile(Member member, IReadOnlyList<MemberProfileRoleItem> roles)
     {
         return new MemberProfileViewModel
         {
@@ -836,6 +857,8 @@ public class MemberAdminService(ApplicationDbContext dbContext, ChapterAdminServ
             Status = member.Status,
             ChapterName = member.PrimaryChapter.Name,
             ChapterAbbreviation = member.PrimaryChapter.Abbreviation,
+            IsSystemAdmin = member.IsSystemAdmin,
+            OfficerRoles = roles,
             MilitaryServiceRecords = member.MilitaryServiceRecords
                 .OrderBy(record => record.ServiceStartDate)
                 .Select(record => new MilitaryServiceEditModel
