@@ -55,6 +55,14 @@
                             </NavLink>
                         </div>
                     }
+                    @if (permissions.IsSystemAdmin)
+                    {
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="admin/system-admin">
+                                <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> SystemAdmin
+                            </NavLink>
+                        </div>
+                    }
                 }
             </Authorized>
         </AuthorizeView>

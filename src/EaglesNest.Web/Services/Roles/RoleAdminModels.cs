@@ -20,6 +20,18 @@ public sealed record RoleAssignmentItem(
     DateTimeOffset AssignedAt,
     DateTimeOffset? ExpiresAt);
 
+public sealed record RoleAssignmentHistoryItem(
+    Guid Id,
+    Guid MemberId,
+    OfficerPosition Position,
+    Guid OrganizationUnitId,
+    string OrganizationName,
+    string OrganizationAbbreviation,
+    DateTimeOffset AssignedAt,
+    DateTimeOffset? ExpiresAt,
+    string? AssignedBy,
+    string? EndedBy);
+
 public sealed record RoleChapterOption(
     Guid Id,
     string Name,

@@ -89,9 +89,11 @@ public class RoleAdminService(ApplicationDbContext dbContext, ChapterAdminServic
 
     public async Task<IReadOnlyList<RoleAssignmentItem>> GetAssignmentsAsync(Guid memberId)
     {
+        var now = DateTimeOffset.UtcNow;
         return await dbContext.RoleAssignments
             .AsNoTracking()
-            .Where(assignment => assignment.MemberId == memberId)
+            .Where(assignment => assignment.MemberId == memberId &&
+                                 (assignment.ExpiresAt == null || assignment.ExpiresAt > now))
             .OrderBy(assignment => assignment.Position)
             .Select(assignment => new RoleAssignmentItem(
                 assignment.Id,
@@ -103,6 +105,81 @@ public class RoleAdminService(ApplicationDbContext dbContext, ChapterAdminServic
                 assignment.AssignedAt,
                 assignment.ExpiresAt))
             .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<RoleAssignmentHistoryItem>> GetAssignmentHistoryAsync(Guid memberId)
+    {
+        var assignments = await dbContext.RoleAssignments
+            .AsNoTracking()
+            .Where(assignment => assignment.MemberId == memberId)
+            .OrderByDescending(assignment => assignment.AssignedAt)
+            .ThenBy(assignment => assignment.Position)
+            .Select(assignment => new
+            {
+                assignment.Id,
+                assignment.MemberId,
+                assignment.Position,
+                assignment.OrganizationUnitId,
+                OrganizationName = assignment.OrganizationUnit.Name,
+                OrganizationAbbreviation = assignment.OrganizationUnit.Abbreviation,
+                assignment.AssignedAt,
+                assignment.ExpiresAt
+            })
+            .ToListAsync();
+
+        var audits = await dbContext.AuditLogs
+            .AsNoTracking()
+            .Where(log => log.EntityName == nameof(Member) &&
+                          log.EntityId == memberId.ToString() &&
+                          (log.Action == AuditAction.RoleAssignmentCreated ||
+                           log.Action == AuditAction.RoleAssignmentRemoved))
+            .OrderByDescending(log => log.CreatedAt)
+            .Select(log => new
+            {
+                log.Action,
+                log.ActorName,
+                log.CreatedAt,
+                log.DetailsJson
+            })
+            .ToListAsync();
+
+        var auditItems = audits
+            .Select(audit => ToRoleAuditItem(audit.Action, audit.ActorName, audit.CreatedAt, audit.DetailsJson))
+            .Where(audit => audit is not null)
+            .Select(audit => audit!)
+            .ToList();
+
+        return assignments.Select(assignment =>
+        {
+            var position = DisplayPosition(assignment.Position);
+            var created = auditItems
+                .Where(audit => audit.Action == AuditAction.RoleAssignmentCreated &&
+                                string.Equals(audit.Position, position, StringComparison.OrdinalIgnoreCase) &&
+                                string.Equals(audit.Chapter, assignment.OrganizationAbbreviation, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(audit => Math.Abs((audit.CreatedAt - assignment.AssignedAt).TotalSeconds))
+                .FirstOrDefault();
+            var removed = assignment.ExpiresAt is null
+                ? null
+                : auditItems
+                    .Where(audit => audit.Action == AuditAction.RoleAssignmentRemoved &&
+                                    string.Equals(audit.Position, position, StringComparison.OrdinalIgnoreCase) &&
+                                    string.Equals(audit.Chapter, assignment.OrganizationAbbreviation, StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(audit => Math.Abs((audit.CreatedAt - assignment.ExpiresAt.Value).TotalSeconds))
+                    .FirstOrDefault();
+
+            return new RoleAssignmentHistoryItem(
+                assignment.Id,
+                assignment.MemberId,
+                assignment.Position,
+                assignment.OrganizationUnitId,
+                assignment.OrganizationName,
+                assignment.OrganizationAbbreviation,
+                assignment.AssignedAt,
+                assignment.ExpiresAt,
+                created?.ActorName,
+                removed?.ActorName);
+        })
+        .ToList();
     }
 
     public async Task<IReadOnlyList<RoleChapterOption>> GetManageableChapterOptionsAsync(OfficerPermissionContext permissions)
@@ -185,10 +262,12 @@ public class RoleAdminService(ApplicationDbContext dbContext, ChapterAdminServic
             return RoleSaveResult.Failure("Role scope must match the member's primary chapter.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         var exists = await dbContext.RoleAssignments.AnyAsync(assignment =>
             assignment.MemberId == memberId &&
             assignment.OrganizationUnitId == organizationUnitId &&
-            assignment.Position == position);
+            assignment.Position == position &&
+            (assignment.ExpiresAt == null || assignment.ExpiresAt > now));
         if (exists)
         {
             return RoleSaveResult.Failure("That role assignment already exists.");
@@ -299,7 +378,12 @@ public class RoleAdminService(ApplicationDbContext dbContext, ChapterAdminServic
             return RoleSaveResult.Failure("You do not have permission to remove roles for that chapter.");
         }
 
-        dbContext.RoleAssignments.Remove(assignment);
+        if (assignment.ExpiresAt is not null && assignment.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return RoleSaveResult.Failure("Role assignment is already ended.");
+        }
+
+        assignment.ExpiresAt = DateTimeOffset.UtcNow;
         AddAudit(AuditAction.RoleAssignmentRemoved, assignment.Member, assignment.OrganizationUnit, assignment.Position, actor);
 
         await dbContext.SaveChangesAsync();
@@ -382,4 +466,38 @@ public class RoleAdminService(ApplicationDbContext dbContext, ChapterAdminServic
             .Where(part => !string.IsNullOrWhiteSpace(part));
         return string.Join(' ', parts);
     }
+
+    private static RoleAuditItem? ToRoleAuditItem(AuditAction action, string actorName, DateTimeOffset createdAt, string? detailsJson)
+    {
+        if (string.IsNullOrWhiteSpace(detailsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(detailsJson);
+            var position = document.RootElement.TryGetProperty("Position", out var positionElement)
+                ? positionElement.ToString()
+                : null;
+            var chapter = document.RootElement.TryGetProperty("Chapter", out var chapterElement)
+                ? chapterElement.ToString()
+                : null;
+
+            return string.IsNullOrWhiteSpace(position) || string.IsNullOrWhiteSpace(chapter)
+                ? null
+                : new RoleAuditItem(action, position, chapter, actorName, createdAt);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private sealed record RoleAuditItem(
+        AuditAction Action,
+        string Position,
+        string Chapter,
+        string ActorName,
+        DateTimeOffset CreatedAt);
 }

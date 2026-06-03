@@ -101,6 +101,59 @@ public class OfficerPermissionServiceTests
     }
 
     [Fact]
+    public async Task RemoveAssignmentAsync_ExpiresRoleAndKeepsHistory()
+    {
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var member = AddMember(dbContext, "target-login", "Target", "Member", national.Id);
+        var adminMember = AddMember(dbContext, "admin-login", "Admin", "Member", national.Id);
+        adminMember.IsSystemAdmin = true;
+        var assignment = AddRole(dbContext, member.Id, national.Id, OfficerPosition.President);
+        await dbContext.SaveChangesAsync();
+
+        var permissions = await new OfficerPermissionService(database).GetPermissionsAsync("admin-login");
+        var service = new RoleAdminService(dbContext);
+
+        var result = await service.RemoveAssignmentAsync(assignment.Id, permissions, TestActor);
+
+        Assert.True(result.Succeeded);
+        var saved = await dbContext.RoleAssignments.SingleAsync(role => role.Id == assignment.Id);
+        Assert.NotNull(saved.ExpiresAt);
+        Assert.Empty(await service.GetAssignmentsAsync(member.Id));
+        var history = await service.GetAssignmentHistoryAsync(member.Id);
+        Assert.Single(history);
+        Assert.NotNull(history[0].ExpiresAt);
+        Assert.Equal("admin@example.com", history[0].EndedBy);
+    }
+
+    [Fact]
+    public async Task AddAssignmentAsync_AllowsReassigningExpiredRole()
+    {
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var member = AddMember(dbContext, "target-login", "Target", "Member", national.Id);
+        var adminMember = AddMember(dbContext, "admin-login", "Admin", "Member", national.Id);
+        adminMember.IsSystemAdmin = true;
+        var expired = AddRole(dbContext, member.Id, national.Id, OfficerPosition.President);
+        expired.ExpiresAt = DateTimeOffset.UtcNow.AddDays(-1);
+        await dbContext.SaveChangesAsync();
+
+        var permissions = await new OfficerPermissionService(database).GetPermissionsAsync("admin-login");
+        var service = new RoleAdminService(dbContext);
+
+        var result = await service.AddAssignmentAsync(member.Id, OfficerPosition.President, national.Id, permissions, TestActor);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(2, await dbContext.RoleAssignments.CountAsync(role =>
+            role.MemberId == member.Id &&
+            role.OrganizationUnitId == national.Id &&
+            role.Position == OfficerPosition.President));
+        Assert.Single(await service.GetAssignmentsAsync(member.Id));
+    }
+
+    [Fact]
     public async Task GetAssignablePositions_LocalRoleManager_HidesNationalSpecialRoles()
     {
         var database = CreateDatabase();
@@ -123,6 +176,25 @@ public class OfficerPermissionServiceTests
         Assert.Contains(OfficerPosition.RoadCaptain, positions);
         Assert.DoesNotContain(OfficerPosition.MasterSergeantAtArms, positions);
         Assert.DoesNotContain(OfficerPosition.CyberIntel, positions);
+    }
+
+    [Fact]
+    public async Task ExpiredRoleAssignment_DoesNotGrantPermissions()
+    {
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
+        var (_, _, actingChapter, _) = AddStateSetup(dbContext);
+        var president = AddMember(dbContext, "pres-login", "Local", "President", actingChapter.Id);
+        var role = AddRole(dbContext, president.Id, actingChapter.Id, OfficerPosition.President);
+        role.ExpiresAt = DateTimeOffset.UtcNow.AddDays(-1);
+        await dbContext.SaveChangesAsync();
+        var service = new OfficerPermissionService(database);
+
+        var permissions = await service.GetPermissionsAsync("pres-login");
+
+        Assert.False(permissions.CanViewMembers);
+        Assert.False(permissions.CanEditAnyChapter);
+        Assert.False(permissions.CanManageRoles);
     }
 
     [Fact]
