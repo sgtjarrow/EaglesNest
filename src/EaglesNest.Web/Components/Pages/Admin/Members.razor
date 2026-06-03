@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 
 @using EaglesNest.Web.Services.Members
+@using EaglesNest.Web.Services.Chapters
 @using EaglesNest.Web.Services.Permissions
 @using Microsoft.AspNetCore.Authorization
 
@@ -49,11 +50,11 @@ else
                 <div class="col-md-7">
                     <select class="form-select" @onchange="OnChapterFilterChangedAsync">
                         <option value="">All chapters</option>
-                        @foreach (var chapter in EternalChapterOptions)
+                        @foreach (var chapter in NationalChapterOptions)
                         {
                             <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                         }
-                        @foreach (var group in ChapterOptionGroups)
+                        @foreach (var group in FilterChapterOptionGroups)
                         {
                             <optgroup label="@group.Key">
                                 @foreach (var chapter in group)
@@ -223,11 +224,11 @@ else
                                 <label class="form-label" for="primary-chapter">Primary Chapter</label>
                                 <InputSelect id="primary-chapter" class="form-select" @bind-Value="editModel.PrimaryChapterId">
                                     <option value="">Select chapter</option>
-                                    @foreach (var chapter in EternalChapterOptions)
+                                    @foreach (var chapter in PrimaryNationalChapterOptions)
                                     {
                                         <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
                                     }
-                                    @foreach (var group in ChapterOptionGroups)
+                                    @foreach (var group in PrimaryChapterOptionGroups)
                                     {
                                         <optgroup label="@group.Key">
                                             @foreach (var chapter in group)
@@ -525,6 +526,7 @@ else
     private IReadOnlyList<MemberAuditLogItem> auditLogs = [];
     private OfficerPermissionContext? permissions;
     private MemberEditModel editModel = new();
+    private IReadOnlyList<ChapterOption> primaryChapterOptions = [];
     private Guid? selectedMemberId;
     private Guid? filterChapterId;
     private MemberStatus? filterStatus;
@@ -534,9 +536,16 @@ else
     private string editorTitle = "Add Member";
     private MemberEditorTab activeTab = MemberEditorTab.Profile;
     private bool CanEditCurrentMember => permissions?.CanEditMemberInChapter(editModel.PrimaryChapterId ?? Guid.Empty) == true;
+    private IEnumerable<ChapterOption> NationalChapterOptions => chapterOptions.Where(chapter => IsNationalChapter(chapter.Abbreviation));
     private IEnumerable<ChapterOption> EternalChapterOptions => chapterOptions.Where(chapter => IsEternalChapter(chapter.Abbreviation));
-    private IEnumerable<IGrouping<string, ChapterOption>> ChapterOptionGroups => chapterOptions
-        .Where(chapter => !IsEternalChapter(chapter.Abbreviation))
+    private IEnumerable<IGrouping<string, ChapterOption>> FilterChapterOptionGroups => chapterOptions
+        .Where(chapter => !IsEternalChapter(chapter.Abbreviation) && !IsNationalChapter(chapter.Abbreviation))
+        .GroupBy(chapter => chapter.StateName ?? "Other")
+        .OrderBy(group => group.Key);
+    private IEnumerable<ChapterOption> PrimaryNationalChapterOptions => primaryChapterOptions.Where(chapter => IsNationalChapter(chapter.Abbreviation));
+    private IEnumerable<ChapterOption> PrimaryEternalChapterOptions => primaryChapterOptions.Where(chapter => IsEternalChapter(chapter.Abbreviation));
+    private IEnumerable<IGrouping<string, ChapterOption>> PrimaryChapterOptionGroups => primaryChapterOptions
+        .Where(chapter => !IsEternalChapter(chapter.Abbreviation) && !IsNationalChapter(chapter.Abbreviation))
         .GroupBy(chapter => chapter.StateName ?? "Other")
         .OrderBy(group => group.Key);
 
@@ -552,6 +561,9 @@ else
         chapterOptions = permissions.CanViewAllMembers
             ? allChapterOptions
             : allChapterOptions.Where(chapter => permissions.CanViewMemberInChapter(chapter.Id)).ToList();
+        primaryChapterOptions = permissions.CanEditAllMembers
+            ? allChapterOptions
+            : allChapterOptions.Where(chapter => permissions.CanEditMemberInChapter(chapter.Id)).ToList();
         linkedAccountOptions = await MemberService.GetLinkableAccountsAsync(null);
         if (permissions.CanEditMembers)
         {
@@ -610,8 +622,8 @@ else
 
         selectedMemberId = null;
         var defaultChapterId = chapterOptions
-            .FirstOrDefault(chapter => permissions.CanEditMemberInChapter(chapter.Id) && !IsEternalChapter(chapter.Abbreviation))?.Id
-            ?? chapterOptions.FirstOrDefault(chapter => permissions.CanEditMemberInChapter(chapter.Id))?.Id;
+            .FirstOrDefault(chapter => primaryChapterOptions.Any(option => option.Id == chapter.Id) && !IsEternalChapter(chapter.Abbreviation))?.Id
+            ?? primaryChapterOptions.FirstOrDefault()?.Id;
         editModel = new MemberEditModel
         {
             PrimaryChapterId = defaultChapterId,
@@ -735,6 +747,8 @@ else
             AuditAction.RoleAssignmentCreated => "Officer Role Assigned",
             AuditAction.RoleAssignmentRemoved => "Officer Role Removed",
             AuditAction.RoleAssignmentExpired => "Officer Role Expired",
+            AuditAction.SystemAdminGranted => "SystemAdmin Granted",
+            AuditAction.SystemAdminRemoved => "SystemAdmin Removed",
             _ => action.ToString()
         };
     }
@@ -754,8 +768,12 @@ else
 
     private static bool IsEternalChapter(string? abbreviation)
     {
-        return string.Equals(abbreviation, "Chapter-100", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(abbreviation, "US-100", StringComparison.OrdinalIgnoreCase);
+        return ChapterAdminService.IsEternalChapter(abbreviation);
+    }
+
+    private static bool IsNationalChapter(string? abbreviation)
+    {
+        return string.Equals(abbreviation, "NAT", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ShowSuccess(string message)
@@ -797,3 +815,11 @@ else
         Audit
     }
 }
+                        @foreach (var chapter in EternalChapterOptions)
+                        {
+                            <option value="@chapter.Id" selected="@(chapter.Id == filterChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                        }
+                                    @foreach (var chapter in PrimaryEternalChapterOptions)
+                                    {
+                                        <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                                    }

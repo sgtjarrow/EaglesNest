@@ -81,6 +81,7 @@ public static class DevelopmentSuperAdminSeeder
                 FirstName = "Super",
                 LastName = "Admin",
                 RoadName = "super_eagle",
+                IsSystemAdmin = true,
                 Status = MemberStatus.PatchHolder,
                 PrimaryChapterId = national.Id
             };
@@ -106,19 +107,7 @@ public static class DevelopmentSuperAdminSeeder
             });
         }
 
-        var hasSystemAdminAssignment = await dbContext.RoleAssignments
-            .AnyAsync(assignment => assignment.MemberId == member.Id && assignment.Position == OfficerPosition.SystemAdmin);
-
-        if (!hasSystemAdminAssignment)
-        {
-            dbContext.RoleAssignments.Add(new RoleAssignment
-            {
-                Id = Guid.NewGuid(),
-                MemberId = member.Id,
-                OrganizationUnitId = national.Id,
-                Position = OfficerPosition.SystemAdmin
-            });
-        }
+        member.IsSystemAdmin = true;
 
         await dbContext.SaveChangesAsync();
     }

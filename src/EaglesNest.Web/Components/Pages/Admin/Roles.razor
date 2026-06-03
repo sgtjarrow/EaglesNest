@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 
 @using EaglesNest.Core.Domain
+@using EaglesNest.Web.Services.Chapters
 @using EaglesNest.Web.Services.Members
 @using EaglesNest.Web.Services.Permissions
 @using EaglesNest.Web.Services.Roles
@@ -61,6 +62,51 @@ else
         </div>
 
         <div class="col-12 col-xl-7">
+            @if (permissions.IsSystemAdmin)
+            {
+                <section class="admin-panel mb-4">
+                    <h2 class="h4">SystemAdmin</h2>
+                    <p class="text-muted">SystemAdmin is a member flag and is limited to two members.</p>
+                    @if (systemAdmins.Count == 0)
+                    {
+                        <p class="text-muted">No SystemAdmin members assigned.</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Member</th>
+                                        <th>Chapter</th>
+                                        <th class="text-end">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var admin in systemAdmins)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>@admin.DisplayName</strong>
+                                                <span class="text-muted d-block">@admin.LegalName</span>
+                                            </td>
+                                            <td>@admin.ChapterAbbreviation - @admin.ChapterName</td>
+                                            <td class="text-end">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveSystemAdminAsync(admin.Id)">Remove</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    @if (selectedMember is not null)
+                    {
+                        <button type="button" class="btn btn-outline-primary" @onclick="GrantSystemAdminAsync">Grant Selected Member</button>
+                    }
+                </section>
+            }
+
             <section class="admin-panel">
                 @if (selectedMember is null)
                 {
@@ -84,12 +130,25 @@ else
                         </div>
                         <div class="col-md-5">
                             <label class="form-label" for="chapter">Chapter Scope</label>
-                            <InputSelect id="chapter" class="form-select" @bind-Value="selectedChapterId">
-                                @foreach (var chapter in chapterOptions)
+                            <select id="chapter" class="form-select" @onchange="OnSelectedChapterChangedAsync">
+                                @foreach (var chapter in NationalChapterOptions)
                                 {
-                                    <option value="@chapter.Id">@chapter.Abbreviation - @chapter.Name</option>
+                                    <option value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
                                 }
-                            </InputSelect>
+                                @foreach (var group in ChapterOptionGroups)
+                                {
+                                    <optgroup label="@group.Key">
+                                        @foreach (var chapter in group)
+                                        {
+                                            <option value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                                        }
+                                    </optgroup>
+                                }
+                                @foreach (var chapter in EternalChapterOptions)
+                                {
+                                    <option value="@chapter.Id" selected="@(chapter.Id == selectedChapterId)">@chapter.Abbreviation - @chapter.Name</option>
+                                }
+                            </select>
                         </div>
                         <div class="col-md-2">
                             <button type="button" class="btn btn-primary w-100" @onclick="AddAssignmentAsync">Add</button>
@@ -175,6 +234,7 @@ else
     private IReadOnlyList<RoleMemberListItem> members = [];
     private IReadOnlyList<RoleAssignmentItem> assignments = [];
     private IReadOnlyList<RoleChapterOption> chapterOptions = [];
+    private IReadOnlyList<RoleMemberListItem> systemAdmins = [];
     private RoleMemberListItem? selectedMember;
     private Guid? selectedMemberId;
     private Guid selectedChapterId;
@@ -184,9 +244,13 @@ else
     private string statusClass = "alert-info";
 
     private IEnumerable<OfficerPosition> PositionOptions =>
-        permissions?.IsSystemAdmin == true
-            ? new[] { OfficerPosition.SystemAdmin }.Concat(RoleAdminService.AssignablePositions)
-            : RoleAdminService.AssignablePositions;
+        permissions is null ? [] : RoleService.GetAssignablePositions(permissions, selectedChapterId);
+    private IEnumerable<RoleChapterOption> NationalChapterOptions => chapterOptions.Where(chapter => IsNationalChapter(chapter.Abbreviation));
+    private IEnumerable<RoleChapterOption> EternalChapterOptions => chapterOptions.Where(chapter => IsEternalChapter(chapter.Abbreviation));
+    private IEnumerable<IGrouping<string, RoleChapterOption>> ChapterOptionGroups => chapterOptions
+        .Where(chapter => !IsNationalChapter(chapter.Abbreviation) && !IsEternalChapter(chapter.Abbreviation))
+        .GroupBy(chapter => chapter.StateName ?? "Other")
+        .OrderBy(group => group.Key);
 
     protected override async Task OnInitializedAsync()
     {
@@ -198,6 +262,8 @@ else
 
         chapterOptions = await RoleService.GetManageableChapterOptionsAsync(permissions);
         selectedChapterId = chapterOptions.FirstOrDefault()?.Id ?? Guid.Empty;
+        selectedPosition = PositionOptions.FirstOrDefault();
+        systemAdmins = await RoleService.GetSystemAdminsAsync();
         await SearchAsync();
     }
 
@@ -220,6 +286,20 @@ else
         selectedChapterId = chapterOptions.FirstOrDefault(chapter => chapter.Abbreviation == selectedMember?.ChapterAbbreviation)?.Id
             ?? chapterOptions.FirstOrDefault()?.Id
             ?? Guid.Empty;
+        selectedPosition = PositionOptions.FirstOrDefault();
+    }
+
+    private Task OnSelectedChapterChangedAsync(ChangeEventArgs args)
+    {
+        selectedChapterId = Guid.TryParse(args.Value?.ToString(), out var chapterId)
+            ? chapterId
+            : Guid.Empty;
+        if (!PositionOptions.Contains(selectedPosition))
+        {
+            selectedPosition = PositionOptions.FirstOrDefault();
+        }
+
+        return Task.CompletedTask;
     }
 
     private async Task AddAssignmentAsync()
@@ -242,6 +322,30 @@ else
 
         var result = await RoleService.RemoveAssignmentAsync(assignmentId, permissions, await BuildActorAsync());
         await AfterSaveAsync(result);
+    }
+
+    private async Task GrantSystemAdminAsync()
+    {
+        if (permissions is null || selectedMemberId is null)
+        {
+            return;
+        }
+
+        var result = await RoleService.GrantSystemAdminAsync(selectedMemberId.Value, permissions, await BuildActorAsync());
+        await AfterSaveAsync(result);
+        systemAdmins = await RoleService.GetSystemAdminsAsync();
+    }
+
+    private async Task RemoveSystemAdminAsync(Guid memberId)
+    {
+        if (permissions is null)
+        {
+            return;
+        }
+
+        var result = await RoleService.RemoveSystemAdminAsync(memberId, permissions, await BuildActorAsync());
+        await AfterSaveAsync(result);
+        systemAdmins = await RoleService.GetSystemAdminsAsync();
     }
 
     private async Task AfterSaveAsync(RoleSaveResult result)
@@ -274,5 +378,15 @@ else
         var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         var actorName = user.Identity?.Name ?? user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "Unknown User";
         return new MemberActor(userId, actorName, "User");
+    }
+
+    private static bool IsNationalChapter(string? abbreviation)
+    {
+        return string.Equals(abbreviation, "NAT", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEternalChapter(string? abbreviation)
+    {
+        return ChapterAdminService.IsEternalChapter(abbreviation);
     }
 }

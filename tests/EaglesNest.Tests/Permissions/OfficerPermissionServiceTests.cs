@@ -32,7 +32,7 @@ public class OfficerPermissionServiceTests
         await using var dbContext = database.CreateDbContext();
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         var member = AddMember(dbContext, "super-login", "Super", "Admin", national.Id);
-        AddRole(dbContext, member.Id, national.Id, OfficerPosition.SystemAdmin);
+        member.IsSystemAdmin = true;
         await dbContext.SaveChangesAsync();
         var service = new OfficerPermissionService(database);
 
@@ -81,7 +81,7 @@ public class OfficerPermissionServiceTests
         var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
         var member = AddMember(dbContext, "target-login", "Target", "Member", national.Id);
         var adminMember = AddMember(dbContext, "admin-login", "Admin", "Member", national.Id);
-        AddRole(dbContext, adminMember.Id, national.Id, OfficerPosition.SystemAdmin);
+        adminMember.IsSystemAdmin = true;
         await dbContext.SaveChangesAsync();
 
         var permissions = await new OfficerPermissionService(database).GetPermissionsAsync("admin-login");
@@ -98,6 +98,59 @@ public class OfficerPermissionServiceTests
             log.EntityName == nameof(Member) &&
             log.EntityId == member.Id.ToString() &&
             log.Action == AuditAction.RoleAssignmentCreated));
+    }
+
+    [Fact]
+    public async Task GetAssignablePositions_LocalRoleManager_HidesNationalSpecialRoles()
+    {
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
+        var (_, _, actingChapter, _) = AddStateSetup(dbContext);
+        var president = AddMember(dbContext, "pres-login", "Local", "President", actingChapter.Id);
+        AddRole(dbContext, president.Id, actingChapter.Id, OfficerPosition.President);
+        await dbContext.SaveChangesAsync();
+
+        var permissions = new OfficerPermissionContext
+        {
+            CanManageRoles = true,
+            ManageRoleChapterIds = new HashSet<Guid> { actingChapter.Id }
+        };
+        var service = new RoleAdminService(dbContext);
+
+        var positions = service.GetAssignablePositions(permissions, actingChapter.Id);
+
+        Assert.Contains(OfficerPosition.President, positions);
+        Assert.Contains(OfficerPosition.RoadCaptain, positions);
+        Assert.DoesNotContain(OfficerPosition.MasterSergeantAtArms, positions);
+        Assert.DoesNotContain(OfficerPosition.CyberIntel, positions);
+    }
+
+    [Fact]
+    public async Task GrantSystemAdminAsync_RejectsThirdSystemAdmin()
+    {
+        var database = CreateDatabase();
+        await using var dbContext = database.CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var currentAdmin = AddMember(dbContext, "admin-login", "Admin", "One", national.Id);
+        var secondAdmin = AddMember(dbContext, "admin-2-login", "Admin", "Two", national.Id);
+        var target = AddMember(dbContext, "target-login", "Target", "Member", national.Id);
+        currentAdmin.IsSystemAdmin = true;
+        secondAdmin.IsSystemAdmin = true;
+        await dbContext.SaveChangesAsync();
+
+        var permissions = new OfficerPermissionContext
+        {
+            IsSystemAdmin = true,
+            MemberId = currentAdmin.Id,
+            CanManageRoles = true,
+            CanManageAllRoles = true
+        };
+        var service = new RoleAdminService(dbContext);
+
+        var result = await service.GrantSystemAdminAsync(target.Id, permissions, TestActor);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Errors, error => error.Contains("2 SystemAdmin", StringComparison.OrdinalIgnoreCase));
     }
 
     private static TestDbContextFactory CreateDatabase()

@@ -67,7 +67,7 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         var byParent = chapters
             .Where(unit => unit.ParentOrganizationUnitId is not null)
             .GroupBy(unit => unit.ParentOrganizationUnitId!.Value)
-            .ToDictionary(group => group.Key, group => group.OrderBy(ChapterSortKey).ThenBy(unit => unit.Name).ToList());
+            .ToDictionary(group => group.Key, group => group.OrderBy(ChapterSortSegment).ThenBy(ChapterSortKey).ThenBy(unit => unit.Name).ToList());
 
         foreach (var chapter in chapters)
         {
@@ -79,8 +79,71 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
 
         return chapters
             .Where(unit => unit.ParentOrganizationUnitId is null)
-            .OrderBy(ChapterSortKey)
+            .OrderBy(ChapterSortSegment)
+            .ThenBy(ChapterSortKey)
             .ThenBy(unit => unit.Name)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<ChapterOptionItem>> GetChapterOptionsAsync(
+        IReadOnlySet<Guid>? allowedChapterIds = null,
+        bool allowAllChapters = true,
+        bool includeNational = true,
+        bool includeEternal = true)
+    {
+        var query = dbContext.OrganizationUnits
+            .AsNoTracking()
+            .Where(unit => unit.Status == OrganizationStatus.Open &&
+                           (unit.Level == OrganizationLevel.National || unit.Level == OrganizationLevel.LocalChapter));
+
+        if (!allowAllChapters)
+        {
+            if (allowedChapterIds is null || allowedChapterIds.Count == 0)
+            {
+                return [];
+            }
+
+            query = query.Where(unit => allowedChapterIds.Contains(unit.Id));
+        }
+
+        if (!includeNational)
+        {
+            query = query.Where(unit => unit.Level != OrganizationLevel.National);
+        }
+
+        var chapters = await query
+            .Select(unit => new ChapterOptionItem(
+                unit.Id,
+                unit.Abbreviation,
+                unit.Name,
+                unit.Level,
+                unit.ParentOrganizationUnitId,
+                unit.Level == OrganizationLevel.National ? "National" : unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Name,
+                unit.Level == OrganizationLevel.National ? "NAT" : unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Abbreviation))
+            .ToListAsync();
+
+        if (!includeEternal)
+        {
+            chapters = chapters.Where(chapter => !IsEternalChapter(chapter.Abbreviation)).ToList();
+        }
+
+        return chapters
+            .OrderBy(ChapterSortSegment)
+            .ThenBy(ChapterSortKey)
+            .ThenBy(chapter => chapter.Name)
+            .ToList();
+    }
+
+    public static IReadOnlyList<ChapterOptionGroup> BuildChapterOptionGroups(IEnumerable<ChapterOptionItem> chapters)
+    {
+        return chapters
+            .Where(chapter => chapter.Level == OrganizationLevel.LocalChapter && !IsEternalChapter(chapter.Abbreviation))
+            .GroupBy(chapter => chapter.StateName ?? "Other")
+            .OrderBy(group => group.Key)
+            .Select(group => new ChapterOptionGroup(group.Key, group
+                .OrderBy(chapter => chapter.Abbreviation)
+                .ThenBy(chapter => chapter.Name)
+                .ToList()))
             .ToList();
     }
 
@@ -695,19 +758,43 @@ public class ChapterAdminService(ApplicationDbContext dbContext)
         return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(value.ToLowerInvariant());
     }
 
-    private static string ChapterSortKey(ChapterTreeItem item)
+    public static int ChapterSortSegment(string abbreviation, OrganizationLevel level)
     {
-        if (item.Level == OrganizationLevel.National)
+        if (level == OrganizationLevel.National)
         {
-            return "0000";
+            return 0;
         }
 
-        if (IsEternalChapter(item.Abbreviation))
+        if (IsEternalChapter(abbreviation))
         {
-            return "0001";
+            return 2;
         }
 
-        return $"1000-{item.Name}";
+        return 1;
+    }
+
+    public static int ChapterSortSegment(ChapterTreeItem item)
+    {
+        return ChapterSortSegment(item.Abbreviation, item.Level);
+    }
+
+    public static int ChapterSortSegment(ChapterOptionItem item)
+    {
+        return ChapterSortSegment(item.Abbreviation, item.Level);
+    }
+
+    public static string ChapterSortKey(ChapterTreeItem item)
+    {
+        return item.Level == OrganizationLevel.LocalChapter
+            ? item.Abbreviation
+            : item.Name;
+    }
+
+    public static string ChapterSortKey(ChapterOptionItem item)
+    {
+        return item.Level == OrganizationLevel.LocalChapter
+            ? item.Abbreviation
+            : item.Name;
     }
 
     public static bool IsEternalChapter(string? abbreviation)

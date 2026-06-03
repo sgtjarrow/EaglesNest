@@ -1,14 +1,27 @@
 using System.Text.Json;
 using EaglesNest.Core.Domain;
 using EaglesNest.Web.Data;
+using EaglesNest.Web.Services.Chapters;
 using EaglesNest.Web.Services.Members;
 using EaglesNest.Web.Services.Permissions;
 using Microsoft.EntityFrameworkCore;
 
 namespace EaglesNest.Web.Services.Roles;
 
-public class RoleAdminService(ApplicationDbContext dbContext)
+public class RoleAdminService(ApplicationDbContext dbContext, ChapterAdminService chapterService)
 {
+    private const int MaxSystemAdmins = 2;
+
+    public static readonly OfficerPosition[] LocalAssignablePositions =
+    [
+        OfficerPosition.President,
+        OfficerPosition.VicePresident,
+        OfficerPosition.Treasurer,
+        OfficerPosition.Secretary,
+        OfficerPosition.SergeantAtArms,
+        OfficerPosition.RoadCaptain
+    ];
+
     public static readonly OfficerPosition[] AssignablePositions =
     [
         OfficerPosition.President,
@@ -20,6 +33,11 @@ public class RoleAdminService(ApplicationDbContext dbContext)
         OfficerPosition.MasterSergeantAtArms,
         OfficerPosition.CyberIntel
     ];
+
+    public RoleAdminService(ApplicationDbContext dbContext)
+        : this(dbContext, new ChapterAdminService(dbContext))
+    {
+    }
 
     public async Task<IReadOnlyList<RoleMemberListItem>> SearchMembersAsync(string? search, OfficerPermissionContext permissions)
     {
@@ -94,26 +112,9 @@ public class RoleAdminService(ApplicationDbContext dbContext)
             return [];
         }
 
-        var query = dbContext.OrganizationUnits
-            .AsNoTracking()
-            .Where(unit => unit.Status != OrganizationStatus.Closed &&
-                           (unit.Level == OrganizationLevel.National || unit.Level == OrganizationLevel.LocalChapter));
-
-        if (!permissions.CanManageAllRoles)
-        {
-            query = query.Where(unit => permissions.ManageRoleChapterIds.Contains(unit.Id));
-        }
-
-        var chapters = await query
-            .Select(unit => new
-            {
-                unit.Id,
-                unit.Name,
-                unit.Abbreviation,
-                unit.Level,
-                StateName = unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Name
-            })
-            .ToListAsync();
+        var chapters = await chapterService.GetChapterOptionsAsync(
+            permissions.ManageRoleChapterIds,
+            permissions.CanManageAllRoles);
 
         return chapters
             .Select(chapter => new RoleChapterOption(
@@ -121,10 +122,29 @@ public class RoleAdminService(ApplicationDbContext dbContext)
                 chapter.Name,
                 chapter.Abbreviation,
                 chapter.Level,
-                chapter.Level == OrganizationLevel.National ? "000 National" : chapter.StateName ?? "zzz",
-                chapter.Level == OrganizationLevel.National ? "000 National" : chapter.Name))
-            .OrderBy(chapter => chapter.SortGroup)
-            .ThenBy(chapter => chapter.SortName)
+                chapter.StateName,
+                chapter.StateAbbreviation))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<RoleMemberListItem>> GetSystemAdminsAsync()
+    {
+        var members = await dbContext.Members
+            .AsNoTracking()
+            .Include(member => member.PrimaryChapter)
+            .Where(member => member.IsSystemAdmin)
+            .OrderBy(member => member.RoadName ?? member.LastName)
+            .ThenBy(member => member.LastName)
+            .ThenBy(member => member.FirstName)
+            .ToListAsync();
+
+        return members.Select(member => new RoleMemberListItem(
+            member.Id,
+            DisplayName(member),
+            LegalName(member),
+            member.PrimaryChapter.Name,
+            member.PrimaryChapter.Abbreviation,
+            member.Status))
             .ToList();
     }
 
@@ -140,12 +160,7 @@ public class RoleAdminService(ApplicationDbContext dbContext)
             return RoleSaveResult.Failure("You do not have permission to assign roles for that chapter.");
         }
 
-        if (position == OfficerPosition.SystemAdmin && !permissions.IsSystemAdmin)
-        {
-            return RoleSaveResult.Failure("Only SystemAdmin can assign SystemAdmin.");
-        }
-
-        if (!permissions.IsSystemAdmin && !AssignablePositions.Contains(position))
+        if (!GetAssignablePositions(permissions, organizationUnitId).Contains(position))
         {
             return RoleSaveResult.Failure("That officer position cannot be assigned here.");
         }
@@ -193,6 +208,80 @@ public class RoleAdminService(ApplicationDbContext dbContext)
         return RoleSaveResult.Success();
     }
 
+    public async Task<RoleSaveResult> GrantSystemAdminAsync(Guid memberId, OfficerPermissionContext permissions, MemberActor actor)
+    {
+        if (!permissions.IsSystemAdmin)
+        {
+            return RoleSaveResult.Failure("Only SystemAdmin can grant SystemAdmin.");
+        }
+
+        var member = await dbContext.Members
+            .Include(existing => existing.PrimaryChapter)
+            .SingleOrDefaultAsync(existing => existing.Id == memberId);
+        if (member is null)
+        {
+            return RoleSaveResult.Failure("Member was not found.");
+        }
+
+        if (member.IsSystemAdmin)
+        {
+            return RoleSaveResult.Failure("Member is already a SystemAdmin.");
+        }
+
+        var count = await dbContext.Members.CountAsync(existing => existing.IsSystemAdmin);
+        if (count >= MaxSystemAdmins)
+        {
+            return RoleSaveResult.Failure($"Only {MaxSystemAdmins} SystemAdmin members are allowed.");
+        }
+
+        member.IsSystemAdmin = true;
+        AddSystemAdminAudit(AuditAction.SystemAdminGranted, member, actor);
+        await dbContext.SaveChangesAsync();
+        return RoleSaveResult.Success();
+    }
+
+    public async Task<RoleSaveResult> RemoveSystemAdminAsync(Guid memberId, OfficerPermissionContext permissions, MemberActor actor)
+    {
+        if (!permissions.IsSystemAdmin)
+        {
+            return RoleSaveResult.Failure("Only SystemAdmin can remove SystemAdmin.");
+        }
+
+        var member = await dbContext.Members
+            .Include(existing => existing.PrimaryChapter)
+            .SingleOrDefaultAsync(existing => existing.Id == memberId);
+        if (member is null)
+        {
+            return RoleSaveResult.Failure("Member was not found.");
+        }
+
+        if (!member.IsSystemAdmin)
+        {
+            return RoleSaveResult.Failure("Member is not a SystemAdmin.");
+        }
+
+        var count = await dbContext.Members.CountAsync(existing => existing.IsSystemAdmin);
+        if (count <= 1 && permissions.MemberId == memberId)
+        {
+            return RoleSaveResult.Failure("Cannot remove the last SystemAdmin from yourself.");
+        }
+
+        member.IsSystemAdmin = false;
+        AddSystemAdminAudit(AuditAction.SystemAdminRemoved, member, actor);
+        await dbContext.SaveChangesAsync();
+        return RoleSaveResult.Success();
+    }
+
+    public IReadOnlyList<OfficerPosition> GetAssignablePositions(OfficerPermissionContext permissions, Guid organizationUnitId)
+    {
+        if (permissions.IsSystemAdmin || permissions.CanManageAllRoles)
+        {
+            return AssignablePositions;
+        }
+
+        return LocalAssignablePositions;
+    }
+
     public async Task<RoleSaveResult> RemoveAssignmentAsync(Guid assignmentId, OfficerPermissionContext permissions, MemberActor actor)
     {
         var assignment = await dbContext.RoleAssignments
@@ -210,11 +299,6 @@ public class RoleAdminService(ApplicationDbContext dbContext)
             return RoleSaveResult.Failure("You do not have permission to remove roles for that chapter.");
         }
 
-        if (assignment.Position == OfficerPosition.SystemAdmin && !permissions.IsSystemAdmin)
-        {
-            return RoleSaveResult.Failure("Only SystemAdmin can remove SystemAdmin.");
-        }
-
         dbContext.RoleAssignments.Remove(assignment);
         AddAudit(AuditAction.RoleAssignmentRemoved, assignment.Member, assignment.OrganizationUnit, assignment.Position, actor);
 
@@ -226,7 +310,6 @@ public class RoleAdminService(ApplicationDbContext dbContext)
     {
         return position switch
         {
-            OfficerPosition.SystemAdmin => "System Admin",
             OfficerPosition.VicePresident => "Vice President",
             OfficerPosition.SergeantAtArms => "Sergeant At Arms",
             OfficerPosition.RoadCaptain => "Road Captain",
@@ -253,6 +336,26 @@ public class RoleAdminService(ApplicationDbContext dbContext)
                 Member = DisplayName(member),
                 Position = DisplayPosition(position),
                 Chapter = organization.Abbreviation,
+                Action = action.ToString()
+            })
+        });
+    }
+
+    private void AddSystemAdminAudit(AuditAction action, Member member, MemberActor actor)
+    {
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            ApplicationUserId = actor.ApplicationUserId,
+            ActorName = actor.ActorName,
+            ActorSource = actor.ActorSource,
+            OrganizationUnitId = member.PrimaryChapterId,
+            Action = action,
+            EntityName = nameof(Member),
+            EntityId = member.Id.ToString(),
+            DetailsJson = JsonSerializer.Serialize(new
+            {
+                MemberId = member.Id,
+                Member = DisplayName(member),
                 Action = action.ToString()
             })
         });

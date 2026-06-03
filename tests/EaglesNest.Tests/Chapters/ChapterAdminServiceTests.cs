@@ -72,6 +72,28 @@ public class ChapterAdminServiceTests
     }
 
     [Fact]
+    public async Task GetHierarchyAsync_UsesStandardChapterOrder()
+    {
+        await using var dbContext = CreateDbContext();
+        var national = AddOrganization(dbContext, "National", "NAT", OrganizationLevel.National, null);
+        var georgia = AddOrganization(dbContext, "Georgia", "GA", OrganizationLevel.State, national.Id);
+        var florida = AddOrganization(dbContext, "Florida", "FLA", OrganizationLevel.State, national.Id);
+        AddOrganization(dbContext, "Tampa", "FLA-7", OrganizationLevel.LocalChapter, florida.Id);
+        AddOrganization(dbContext, "Jensen Beach", "FLA-4", OrganizationLevel.LocalChapter, florida.Id);
+        AddOrganization(dbContext, "Atlanta", "GA-1", OrganizationLevel.LocalChapter, georgia.Id);
+        AddOrganization(dbContext, "Eternal Chapter", "Chapter-100", OrganizationLevel.LocalChapter, national.Id);
+        await dbContext.SaveChangesAsync();
+        var service = new ChapterAdminService(dbContext);
+
+        var hierarchy = await service.GetHierarchyAsync();
+        var root = hierarchy.Single();
+
+        Assert.Equal("NAT", root.Abbreviation);
+        Assert.Equal(["FLA", "GA", "Chapter-100"], root.Children.Select(child => child.Abbreviation));
+        Assert.Equal(["FLA-4", "FLA-7"], root.Children.Single(child => child.Abbreviation == "FLA").Children.Select(child => child.Abbreviation));
+    }
+
+    [Fact]
     public async Task CloseAsync_RejectsNational()
     {
         await using var dbContext = CreateDbContext();

@@ -2,12 +2,18 @@ using System.Globalization;
 using System.Text.Json;
 using EaglesNest.Core.Domain;
 using EaglesNest.Web.Data;
+using EaglesNest.Web.Services.Chapters;
 using Microsoft.EntityFrameworkCore;
 
 namespace EaglesNest.Web.Services.Members;
 
-public class MemberAdminService(ApplicationDbContext dbContext)
+public class MemberAdminService(ApplicationDbContext dbContext, ChapterAdminService chapterService)
 {
+    public MemberAdminService(ApplicationDbContext dbContext)
+        : this(dbContext, new ChapterAdminService(dbContext))
+    {
+    }
+
     private readonly SemaphoreSlim dbContextGate = new(1, 1);
 
     private static readonly MemberStatus[] RoadNameConflictStatuses =
@@ -188,36 +194,17 @@ public class MemberAdminService(ApplicationDbContext dbContext)
 
     public async Task<IReadOnlyList<ChapterOption>> GetChapterOptionsAsync()
     {
-        return await UseDbContextAsync(async () =>
-        {
-            var chapters = await dbContext.OrganizationUnits
-                .AsNoTracking()
-                .Where(unit => (unit.Level == OrganizationLevel.National ||
-                                unit.Level == OrganizationLevel.LocalChapter) &&
-                               unit.Status == OrganizationStatus.Open)
-                .Select(unit => new
-                {
-                    unit.Id,
-                    unit.Abbreviation,
-                    unit.Name,
-                    StateName = unit.Level == OrganizationLevel.National ? "National" : unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Name,
-                    StateAbbreviation = unit.Level == OrganizationLevel.National ? "NAT" : unit.ParentOrganizationUnit == null ? null : unit.ParentOrganizationUnit.Abbreviation
-                })
-                .ToListAsync();
-
-            return chapters
-                .Select(chapter => new ChapterOption(
-                    chapter.Id,
-                    chapter.Abbreviation,
-                    chapter.Name,
-                    chapter.StateName,
-                    chapter.StateAbbreviation,
-                    ChapterSortGroup(chapter.Abbreviation, chapter.StateName),
-                    ChapterSortName(chapter.Abbreviation, chapter.Name)))
-                .OrderBy(chapter => chapter.SortGroup)
-                .ThenBy(chapter => chapter.SortName)
-                .ToList();
-        });
+        var chapters = await chapterService.GetChapterOptionsAsync();
+        return chapters
+            .Select(chapter => new ChapterOption(
+                chapter.Id,
+                chapter.Abbreviation,
+                chapter.Name,
+                chapter.StateName,
+                chapter.StateAbbreviation,
+                ChapterAdminService.ChapterSortSegment(chapter).ToString(CultureInfo.InvariantCulture),
+                ChapterAdminService.ChapterSortKey(chapter)))
+            .ToList();
     }
 
     public async Task<IReadOnlyList<MemberChapterAssignmentItem>> GetChapterAssignmentsAsync(Guid memberId)
@@ -892,29 +879,9 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             .Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
-    private static string ChapterSortGroup(string abbreviation, string? stateName)
-    {
-        if (IsEternalChapter(abbreviation))
-        {
-            return "0000";
-        }
-
-        return string.Equals(abbreviation, "NAT", StringComparison.OrdinalIgnoreCase)
-            ? "0001"
-            : $"1000-{stateName ?? string.Empty}";
-    }
-
-    private static string ChapterSortName(string abbreviation, string name)
-    {
-        return IsEternalChapter(abbreviation) || string.Equals(abbreviation, "NAT", StringComparison.OrdinalIgnoreCase)
-            ? "0000"
-            : name;
-    }
-
     private static bool IsEternalChapter(string? abbreviation)
     {
-        return string.Equals(abbreviation, "Chapter-100", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(abbreviation, "US-100", StringComparison.OrdinalIgnoreCase);
+        return ChapterAdminService.IsEternalChapter(abbreviation);
     }
 
     private static string? FormatAuditValue(DateOnly? value)
@@ -1036,6 +1003,8 @@ public class MemberAdminService(ApplicationDbContext dbContext)
             AuditAction.RoleAssignmentCreated => BuildRoleAssignmentSummary("Officer role assigned", detailsJson),
             AuditAction.RoleAssignmentRemoved => BuildRoleAssignmentSummary("Officer role removed", detailsJson),
             AuditAction.RoleAssignmentExpired => BuildRoleAssignmentSummary("Officer role expired", detailsJson),
+            AuditAction.SystemAdminGranted => "SystemAdmin granted.",
+            AuditAction.SystemAdminRemoved => "SystemAdmin removed.",
             _ => action.ToString()
         };
     }

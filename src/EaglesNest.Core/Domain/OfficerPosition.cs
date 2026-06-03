@@ -2,7 +2,6 @@ namespace EaglesNest.Core.Domain;
 
 public enum OfficerPosition
 {
-    SystemAdmin = 1,
     President = 2,
     VicePresident = 3,
     Treasurer = 4,

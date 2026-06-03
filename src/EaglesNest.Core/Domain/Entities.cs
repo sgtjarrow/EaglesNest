@@ -72,6 +72,7 @@ public class Member
     public string? BloodType { get; set; }
     public string? Gender { get; set; }
     public DateOnly? LifetimeDate { get; set; }
+    public bool IsSystemAdmin { get; set; }
     public MemberStatus Status { get; set; } = MemberStatus.Prospect;
     public Guid PrimaryChapterId { get; set; }
     public OrganizationUnit PrimaryChapter { get; set; } = null!;

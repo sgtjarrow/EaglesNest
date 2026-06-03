@@ -25,5 +25,7 @@ public enum AuditAction
     MemberStatusChanged = 21,
     RoleAssignmentCreated = 22,
     RoleAssignmentRemoved = 23,
-    RoleAssignmentExpired = 24
+    RoleAssignmentExpired = 24,
+    SystemAdminGranted = 25,
+    SystemAdminRemoved = 26
 }

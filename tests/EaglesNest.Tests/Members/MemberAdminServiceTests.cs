@@ -72,7 +72,7 @@ public class MemberAdminServiceTests
 
         var options = await service.GetChapterOptionsAsync();
 
-        Assert.Equal(["Chapter-100", "NAT", "FLA-4", "FLA-7", "GA-1"], options.Select(option => option.Abbreviation));
+        Assert.Equal(["NAT", "FLA-4", "FLA-7", "GA-1", "Chapter-100"], options.Select(option => option.Abbreviation));
     }
 
     [Fact]

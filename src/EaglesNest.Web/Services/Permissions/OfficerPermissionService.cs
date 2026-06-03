@@ -31,24 +31,7 @@ public class OfficerPermissionService(IDbContextFactory<ApplicationDbContext> db
         }
 
         var now = DateTimeOffset.UtcNow;
-        var roleAssignments = await dbContext.RoleAssignments
-            .AsNoTracking()
-            .Include(assignment => assignment.OrganizationUnit)
-            .Where(assignment => assignment.MemberId == member.Id &&
-                                 (assignment.ExpiresAt == null || assignment.ExpiresAt > now))
-            .ToListAsync();
-
-        var roleScopes = roleAssignments
-            .Select(assignment => new OfficerRoleScope(
-                assignment.Id,
-                assignment.Position,
-                assignment.OrganizationUnitId,
-                assignment.OrganizationUnit?.Name ?? "All Chapters",
-                assignment.OrganizationUnit?.Abbreviation ?? "ALL",
-                assignment.OrganizationUnit?.Level ?? OrganizationLevel.National))
-            .ToList();
-
-        if (roleAssignments.Any(assignment => assignment.Position == OfficerPosition.SystemAdmin))
+        if (member.IsSystemAdmin)
         {
             return new OfficerPermissionContext
             {
@@ -64,9 +47,26 @@ public class OfficerPermissionService(IDbContextFactory<ApplicationDbContext> db
                 CanEditAllMembers = true,
                 CanEditAllChapters = true,
                 CanManageAllRoles = true,
-                Roles = roleScopes
+                Roles = []
             };
         }
+
+        var roleAssignments = await dbContext.RoleAssignments
+            .AsNoTracking()
+            .Include(assignment => assignment.OrganizationUnit)
+            .Where(assignment => assignment.MemberId == member.Id &&
+                                 (assignment.ExpiresAt == null || assignment.ExpiresAt > now))
+            .ToListAsync();
+
+        var roleScopes = roleAssignments
+            .Select(assignment => new OfficerRoleScope(
+                assignment.Id,
+                assignment.Position,
+                assignment.OrganizationUnitId,
+                assignment.OrganizationUnit.Name,
+                assignment.OrganizationUnit.Abbreviation,
+                assignment.OrganizationUnit.Level))
+            .ToList();
 
         var viewMemberChapterIds = new HashSet<Guid>();
         var editMemberChapterIds = new HashSet<Guid>();

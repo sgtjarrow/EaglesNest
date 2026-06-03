@@ -25,8 +25,8 @@ public sealed record RoleChapterOption(
     string Name,
     string Abbreviation,
     OrganizationLevel Level,
-    string SortGroup,
-    string SortName);
+    string? StateName,
+    string? StateAbbreviation);
 
 public sealed record RoleSaveResult(bool Succeeded, string[] Errors)
 {
