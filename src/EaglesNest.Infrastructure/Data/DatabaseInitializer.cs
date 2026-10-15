@@ -63,6 +63,7 @@ public static class DatabaseInitializer
             logger.LogWarning("No Admin account exists. Configure BootstrapAdmin:UserName, Email, and Password using user-secrets or deployment secrets.");
             return;
         }
+        var mustChangePassword = configuration.GetValue("BootstrapAdmin:MustChangePassword", true);
 
         var user = new ApplicationUser
         {
@@ -72,7 +73,7 @@ public static class DatabaseInitializer
             ApprovalStatus = AccountApprovalStatus.Approved,
             ApprovedAtUtc = DateTimeOffset.UtcNow,
             ApprovedByUserId = "SYSTEM",
-            MustChangePassword = true,
+            MustChangePassword = mustChangePassword,
             LockoutEnabled = true
         };
 
@@ -83,7 +84,11 @@ public static class DatabaseInitializer
         var audit = services.GetRequiredService<IAuditEventWriter>();
         await audit.WriteAsync(null, "SYSTEM", AuditActions.BootstrapAdminCreated,
             new { TargetUserId = user.Id, user.UserName, user.Email }, cancellationToken: cancellationToken);
-        logger.LogInformation("Bootstrap Admin {UserName} was created. Remove bootstrap secrets and change the password at first sign-in.", user.UserName);
+        logger.LogInformation(
+            mustChangePassword
+                ? "Bootstrap Admin {UserName} was created. Remove bootstrap secrets and change the password at first sign-in."
+                : "Bootstrap Admin {UserName} was created. Remove bootstrap secrets.",
+            user.UserName);
     }
 
     private static void EnsureSucceeded(IdentityResult result, string operation)
