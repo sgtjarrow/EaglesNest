@@ -1,0 +1,34 @@
+@page "/"
+@attribute [Authorize(Policy = Permissions.ViewDashboard)]
+
+<PageTitle>Dashboard</PageTitle>
+
+<section class="hero-panel">
+    <div>
+        <p class="eyebrow">Command overview</p>
+        <h1>Welcome to Eagles Nest</h1>
+        <p class="lede">One secure place for member activity, club operations, and dues accountability.</p>
+    </div>
+    <div class="hero-emblem" aria-hidden="true"><span>USMVMC</span><strong>EN</strong></div>
+</section>
+
+<section aria-labelledby="modules-title">
+    <div class="section-heading">
+        <div><p class="eyebrow">Foundation online</p><h2 id="modules-title">Operational modules</h2></div>
+        <span class="status-chip">System ready</span>
+    </div>
+    <div class="module-grid">
+        <a class="module-card" href="members"><span class="module-number">01</span><h2>Members</h2><p>Member records and account links will be introduced in the next operational milestone.</p><span class="card-action">View module →</span></a>
+        <a class="module-card" href="activities"><span class="module-number">02</span><h2>Activities</h2><p>Track rides, meetings, service events, and participation from a unified timeline.</p><span class="card-action">View module →</span></a>
+        <a class="module-card" href="dues"><span class="module-number">03</span><h2>Dues</h2><p>Future-ready space for balances, payment history, and chapter-level reporting.</p><span class="card-action">View module →</span></a>
+    </div>
+</section>
+
+<section class="readiness-panel">
+    <div><p class="eyebrow">Security posture</p><h2>Access is controlled and auditable</h2></div>
+    <ul class="readiness-list">
+        <li><span>✓</span> Admin-approved accounts</li>
+        <li><span>✓</span> Role-based permissions</li>
+        <li><span>✓</span> Append-only event history</li>
+    </ul>
+</section>

@@ -1,0 +1,119 @@
+@page "/Account/Login"
+
+@using System.ComponentModel.DataAnnotations
+@using EaglesNest.Application.Abstractions
+@using EaglesNest.Application.Security
+@using EaglesNest.Infrastructure.Identity
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IAuditEventWriter Audit
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Sign in</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-card">
+        <p class="eyebrow">Secure access</p>
+        <h1>Welcome back</h1>
+        <p class="lede">Sign in to Eagles Nest with your approved account.</p>
+
+        <StatusMessage Message="@errorMessage" />
+        <EditForm EditContext="editContext" method="post" OnSubmit="LoginUser" FormName="login">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" role="alert" />
+            <div class="field-group">
+                <label for="Input.Login">Username or email</label>
+                <InputText @bind-Value="Input.Login" id="Input.Login" autocomplete="username" aria-required="true" />
+                <ValidationMessage For="() => Input.Login" />
+            </div>
+            <div class="field-group">
+                <label for="Input.Password">Password</label>
+                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" autocomplete="current-password" aria-required="true" />
+                <ValidationMessage For="() => Input.Password" />
+            </div>
+            <label class="check-row">
+                <InputCheckbox @bind-Value="Input.RememberMe" />
+                <span>Keep me signed in</span>
+            </label>
+            <button type="submit" class="btn-primary-wide">Sign in</button>
+        </EditForm>
+
+        <div class="auth-links">
+            <a href="Account/ForgotPassword">Forgot password?</a>
+            <a href="Account/Register">Request access</a>
+        </div>
+    </section>
+</div>
+
+@code {
+    private string? errorMessage;
+    private EditContext editContext = default!;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        editContext = new EditContext(Input);
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        }
+    }
+
+    private async Task LoginUser()
+    {
+        if (!editContext.Validate()) return;
+
+        var login = Input.Login.Trim();
+        var user = login.Contains('@')
+            ? await UserManager.FindByEmailAsync(login)
+            : await UserManager.FindByNameAsync(login);
+
+        var result = user is null
+            ? SignInResult.Failed
+            : await SignInManager.PasswordSignInAsync(user, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+
+        if (result.Succeeded && user is not null)
+        {
+            await Audit.WriteAsync(user.Id, user.UserName!, AuditActions.LoginSucceeded,
+                new { user.UserName });
+            if (user.MustChangePassword)
+            {
+                RedirectManager.RedirectTo("Account/Manage/ChangePassword?forced=true");
+            }
+            RedirectManager.RedirectTo(ReturnUrl);
+        }
+
+        await Audit.WriteAsync(user?.Id, user?.UserName ?? login, AuditActions.LoginFailed,
+            new { Reason = result.IsLockedOut ? "LockedOut" : result.IsNotAllowed ? "NotAllowed" : "InvalidCredentials" });
+
+        if (result.IsLockedOut)
+        {
+            RedirectManager.RedirectTo("Account/Lockout");
+        }
+
+        errorMessage = "Error: Sign-in was not successful. Confirm that your account is approved and your credentials are correct.";
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        public string Login { get; set; } = string.Empty;
+
+        [Required, DataType(DataType.Password)]
+        public string Password { get; set; } = string.Empty;
+
+        public bool RememberMe { get; set; }
+    }
+}

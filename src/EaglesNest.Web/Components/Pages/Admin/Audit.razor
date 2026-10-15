@@ -1,0 +1,38 @@
+@page "/admin/audit"
+@attribute [Authorize(Policy = Permissions.ViewAuditLog)]
+@using EaglesNest.Application.Abstractions
+@using EaglesNest.Application.Common
+@inject IAuditQueryService AuditQuery
+@inject IJSRuntime JS
+
+<PageTitle>Audit log</PageTitle>
+
+<div class="page-header">
+    <div><p class="eyebrow">Administration</p><h1>Audit log</h1><p class="lede">An append-only history of account, authentication, and security events.</p></div>
+    <button class="action-button secondary" @onclick="ReloadAsync">Refresh</button>
+</div>
+
+<div class="table-wrap">
+    <table class="data-table">
+        <thead><tr><th>Date and time</th><th>Actor</th><th>Action</th><th>Details</th><th>Notes</th></tr></thead>
+        <tbody>
+        @foreach (var item in events)
+        {
+            <tr>
+                <td><time data-utc="@item.OccurredAtUtc.ToString("O")">@item.OccurredAtUtc.ToString("u") UTC</time></td>
+                <td>@item.ActorName</td>
+                <td><span class="badge">@item.Action</span></td>
+                <td><div class="details-json">@item.DetailsJson</div></td>
+                <td>@item.Notes</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private IReadOnlyList<AuditEventSummary> events = [];
+    protected override Task OnInitializedAsync() => ReloadAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("eaglesNestTime.localize");
+    private async Task ReloadAsync() => events = await AuditQuery.GetRecentAsync(200);
+}

@@ -1,0 +1,152 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = Permissions.ManageUsers)]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using EaglesNest.Application.Abstractions
+@using EaglesNest.Application.Common
+@using EaglesNest.Application.Security
+
+@inject IUserAdministrationService Administration
+@inject IUserApprovalService Approval
+@inject IDevelopmentEmailOutbox EmailOutbox
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IWebHostEnvironment Environment
+
+<PageTitle>User accounts</PageTitle>
+
+<div class="page-header">
+    <div><p class="eyebrow">Administration</p><h1>User accounts</h1><p class="lede">Approve access, manage roles, secure accounts, and issue password reset links.</p></div>
+    <span class="status-chip">@users.Count account@(users.Count == 1 ? "" : "s")</span>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="notice @(messageIsError ? "error" : null)" role="status">@message</div>
+}
+
+<section class="admin-panel" aria-labelledby="create-user-title">
+    <h2 id="create-user-title">Create approved account</h2>
+    <p class="lede">The user receives a set-password link. Administrators never see the final password.</p>
+    <EditForm Model="newUser" OnValidSubmit="CreateUserAsync" FormName="admin-create-user">
+        <DataAnnotationsValidator />
+        <ValidationSummary class="validation-summary" />
+        <div class="admin-grid">
+            <div class="field-group"><label for="new-username">Username</label><InputText id="new-username" @bind-Value="newUser.UserName" /></div>
+            <div class="field-group"><label for="new-email">Email address</label><InputText id="new-email" @bind-Value="newUser.Email" /></div>
+            <div class="field-group"><label>&nbsp;</label><button type="submit" class="btn-primary-wide">Create and send link</button></div>
+        </div>
+    </EditForm>
+</section>
+
+<div class="table-wrap">
+    <table class="data-table">
+        <thead><tr><th>User</th><th>Status</th><th>Roles</th><th>Actions</th></tr></thead>
+        <tbody>
+        @foreach (var user in users)
+        {
+            <tr>
+                <td><strong>@user.UserName</strong><br /><span class="text-muted">@user.Email</span></td>
+                <td>
+                    <span class="badge @StatusClass(user)">@DisplayStatus(user)</span>
+                    @if (user.MustChangePassword) { <span class="badge warn">Password change required</span> }
+                </td>
+                <td>@string.Join(", ", user.Roles)</td>
+                <td>
+                    <div class="action-row">
+                        @if (user.ApprovalStatus == "Pending" && !user.IsDeleted)
+                        {
+                            <button class="action-button" @onclick="() => ApproveAsync(user.Id)">Approve</button>
+                            <button class="action-button secondary" @onclick="() => RejectAsync(user.Id)">Reject</button>
+                        }
+                        @if (user.ApprovalStatus == "Approved" && !user.IsDeleted)
+                        {
+                            <button class="action-button secondary" @onclick="() => SetLockAsync(user.Id, !user.IsLocked)">@(user.IsLocked ? "Unlock" : "Lock")</button>
+                            <button class="action-button secondary" @onclick="() => ResetAsync(user.Id)">Reset password</button>
+                            @if (user.Roles.Contains(SystemRoles.Admin))
+                            {
+                                <button class="action-button secondary" @onclick="() => SetAdminAsync(user, false)">Remove Admin</button>
+                            }
+                            else
+                            {
+                                <button class="action-button secondary" @onclick="() => SetAdminAsync(user, true)">Make Admin</button>
+                            }
+                            <button class="action-button danger" @onclick="() => DeleteAsync(user.Id)">Delete</button>
+                        }
+                    </div>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (Environment.IsDevelopment() && EmailOutbox.GetMessages().Count > 0)
+{
+    <section class="admin-panel" style="margin-top:1.25rem" aria-labelledby="outbox-title">
+        <h2 id="outbox-title">Development email outbox</h2>
+        <p class="lede">Tokenized links are shown only here for local testing and are never written to logs.</p>
+        @foreach (var email in EmailOutbox.GetMessages())
+        {
+            <p><strong>@email.Subject</strong> — @email.Recipient<br />
+                @if (!string.IsNullOrEmpty(email.ActionUrl)) { <a href="@email.ActionUrl">Open secure action link</a> }
+            </p>
+        }
+    </section>
+}
+
+@code {
+    private readonly NewUserModel newUser = new();
+    private IReadOnlyList<UserAccountSummary> users = [];
+    private string actorId = string.Empty;
+    private string actorName = string.Empty;
+    private string? message;
+    private bool messageIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var principal = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        actorId = principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
+        actorName = principal.Identity?.Name ?? "Unknown Admin";
+        await ReloadAsync();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        var resetUri = Navigation.ToAbsoluteUri("Account/ResetPassword").AbsoluteUri;
+        await RunAsync(() => Administration.CreateAsync(newUser.UserName, newUser.Email, resetUri, actorId, actorName), "Account created and set-password link issued.");
+        if (!messageIsError) { newUser.UserName = string.Empty; newUser.Email = string.Empty; }
+    }
+
+    private Task ApproveAsync(string id) => RunAsync(() => Approval.ApproveAsync(id, actorId, actorName, null), "Account approved.");
+    private Task RejectAsync(string id) => RunAsync(() => Approval.RejectAsync(id, actorId, actorName, null), "Account rejected.");
+    private Task SetLockAsync(string id, bool locked) => RunAsync(() => Administration.SetManualLockAsync(id, locked, actorId, actorName), locked ? "Account locked." : "Account unlocked.");
+    private Task DeleteAsync(string id) => RunAsync(() => Administration.SoftDeleteAsync(id, actorId, actorName), "Account deleted and retained for audit history.");
+    private Task ResetAsync(string id) => RunAsync(() => Administration.IssuePasswordResetAsync(id, Navigation.ToAbsoluteUri("Account/ResetPassword").AbsoluteUri, actorId, actorName), "Password reset link issued.");
+
+    private Task SetAdminAsync(UserAccountSummary user, bool isAdmin)
+    {
+        var roles = isAdmin ? new[] { SystemRoles.User, SystemRoles.Admin } : new[] { SystemRoles.User };
+        return RunAsync(() => Administration.SetRolesAsync(user.Id, roles, actorId, actorName), isAdmin ? "Admin role assigned." : "Admin role removed.");
+    }
+
+    private async Task RunAsync(Func<Task<EaglesNest.Application.Common.OperationResult>> operation, string success)
+    {
+        var result = await operation();
+        messageIsError = !result.Succeeded;
+        message = result.Succeeded ? success : result.Error;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync() => users = await Administration.GetUsersAsync();
+    private static string DisplayStatus(UserAccountSummary user) => user.IsDeleted ? "Deleted" : user.IsLocked ? "Locked" : user.ApprovalStatus;
+    private static string StatusClass(UserAccountSummary user) => user.IsDeleted || user.IsLocked || user.ApprovalStatus == "Rejected" ? "bad" : user.ApprovalStatus == "Pending" ? "warn" : "good";
+
+    private sealed class NewUserModel
+    {
+        [Required, StringLength(50, MinimumLength = 3), RegularExpression("^[A-Za-z0-9._-]+$")]
+        public string UserName { get; set; } = string.Empty;
+        [Required, EmailAddress, StringLength(254)]
+        public string Email { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EaglesNest.Application/EaglesNest.Application.csproj" />
+    <Project Path="src/EaglesNest.Domain/EaglesNest.Domain.csproj" />
+    <Project Path="src/EaglesNest.Infrastructure/EaglesNest.Infrastructure.csproj" />
+    <Project Path="src/EaglesNest.Web/EaglesNest.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EaglesNest.IntegrationTests/EaglesNest.IntegrationTests.csproj" />
+    <Project Path="tests/EaglesNest.UnitTests/EaglesNest.UnitTests.csproj" />
+  </Folder>
+</Solution>

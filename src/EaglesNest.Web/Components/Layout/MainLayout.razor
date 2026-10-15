@@ -1,0 +1,31 @@
+@inherits LayoutComponentBase
+
+<div class="app-frame">
+    <aside class="sidebar">
+        <NavMenu />
+    </aside>
+
+    <main class="main-stage">
+        <header class="command-bar">
+            <div>
+                <span class="environment-dot" aria-hidden="true"></span>
+                <span>Army theme</span>
+            </div>
+            <AuthorizeView>
+                <Authorized>
+                    <a class="account-link" href="Account/Manage">@context.User.Identity?.Name</a>
+                </Authorized>
+            </AuthorizeView>
+        </header>
+
+        <article class="content-shell">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Eagles Nest encountered an unexpected error.
+    <a href="." class="reload">Reload</a>
+    <button type="button" class="dismiss" aria-label="Dismiss">×</button>
+</div>

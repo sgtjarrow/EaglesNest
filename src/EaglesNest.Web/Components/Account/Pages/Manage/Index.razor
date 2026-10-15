@@ -1,0 +1,39 @@
+@page "/Account/Manage"
+
+@using EaglesNest.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Account profile</PageTitle>
+
+<p class="eyebrow">Account</p>
+<h1>Profile</h1>
+<p class="lede">Your login identity contains only the details required to secure your Eagles Nest access.</p>
+
+<section class="admin-panel">
+    <div class="field-group"><label>Username</label><input value="@userName" disabled /></div>
+    <div class="field-group"><label>Email address</label><input value="@email" disabled /></div>
+    <a class="btn-secondary-wide" href="Account/Manage/ChangePassword">Change password</a>
+</section>
+
+@code {
+    private string? userName;
+    private string? email;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await UserManager.GetUserAsync(HttpContext.User);
+        if (user is null)
+        {
+            RedirectManager.RedirectToInvalidUser(UserManager, HttpContext);
+            return;
+        }
+
+        userName = await UserManager.GetUserNameAsync(user);
+        email = await UserManager.GetEmailAsync(user);
+    }
+}

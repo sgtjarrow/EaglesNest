@@ -1,0 +1,106 @@
+@page "/Account/Register"
+
+@using System.ComponentModel.DataAnnotations
+@using EaglesNest.Application.Abstractions
+@using EaglesNest.Application.Security
+@using EaglesNest.Domain.Accounts
+@using EaglesNest.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject IAuditEventWriter Audit
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Request access</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-card">
+        <p class="eyebrow">Join the nest</p>
+        <h1>Request access</h1>
+        <p class="lede">Submit your account request. An Eagles Nest administrator will review it before you can sign in.</p>
+
+        <StatusMessage Message="@Message" />
+        <EditForm Model="Input" method="post" OnValidSubmit="RegisterUser" FormName="register">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" role="alert" />
+
+            <div class="field-group">
+                <label for="Input.UserName">Username</label>
+                <InputText @bind-Value="Input.UserName" id="Input.UserName" autocomplete="username" aria-required="true" />
+                <ValidationMessage For="() => Input.UserName" />
+            </div>
+            <div class="field-group">
+                <label for="Input.Email">Email address</label>
+                <InputText @bind-Value="Input.Email" id="Input.Email" autocomplete="email" aria-required="true" />
+                <ValidationMessage For="() => Input.Email" />
+            </div>
+            <div class="field-group">
+                <label for="Input.Password">Password</label>
+                <InputText type="password" @bind-Value="Input.Password" id="Input.Password" autocomplete="new-password" aria-required="true" />
+                <small>Use at least 12 characters with uppercase, lowercase, and a number.</small>
+                <ValidationMessage For="() => Input.Password" />
+            </div>
+            <div class="field-group">
+                <label for="Input.ConfirmPassword">Confirm password</label>
+                <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" autocomplete="new-password" aria-required="true" />
+                <ValidationMessage For="() => Input.ConfirmPassword" />
+            </div>
+            <button type="submit" class="btn-primary-wide">Submit request</button>
+        </EditForm>
+        <p class="auth-footnote">Already approved? <a href="Account/Login">Sign in</a>.</p>
+    </section>
+</div>
+
+@code {
+    private IEnumerable<IdentityError>? identityErrors;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = default!;
+
+    private string? Message => identityErrors is null ? null : $"Error: {string.Join(" ", identityErrors.Select(error => error.Description))}";
+
+    protected override void OnInitialized() => Input ??= new();
+
+    public async Task RegisterUser()
+    {
+        var user = new ApplicationUser
+        {
+            ApprovalStatus = AccountApprovalStatus.Pending,
+            EmailConfirmed = true,
+            LockoutEnabled = true
+        };
+
+        await UserStore.SetUserNameAsync(user, Input.UserName.Trim(), CancellationToken.None);
+        var emailStore = (IUserEmailStore<ApplicationUser>)UserStore;
+        await emailStore.SetEmailAsync(user, Input.Email.Trim(), CancellationToken.None);
+        var result = await UserManager.CreateAsync(user, Input.Password);
+
+        if (!result.Succeeded)
+        {
+            identityErrors = result.Errors;
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(user, SystemRoles.User);
+        await Audit.WriteAsync(user.Id, user.UserName!, AuditActions.AccessRequested,
+            new { TargetUserId = user.Id, user.UserName, user.Email, Source = "SelfService" });
+        RedirectManager.RedirectTo("Account/AccessRequested");
+    }
+
+    private sealed class InputModel
+    {
+        [Required, StringLength(50, MinimumLength = 3)]
+        [RegularExpression("^[A-Za-z0-9._-]+$", ErrorMessage = "Use letters, numbers, periods, underscores, or hyphens.")]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required, EmailAddress, StringLength(254)]
+        public string Email { get; set; } = string.Empty;
+
+        [Required, StringLength(128, MinimumLength = 12), DataType(DataType.Password)]
+        public string Password { get; set; } = string.Empty;
+
+        [Required, DataType(DataType.Password), Compare(nameof(Password), ErrorMessage = "The passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

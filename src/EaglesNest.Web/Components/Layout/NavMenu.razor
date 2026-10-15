@@ -1,0 +1,67 @@
+@implements IDisposable
+@inject NavigationManager NavigationManager
+
+<div class="brand-row">
+    <a class="brand" href="">
+        <span class="brand-mark" aria-hidden="true">EN</span>
+        <span><strong>Eagles Nest</strong><small>Member command</small></span>
+    </a>
+    <input type="checkbox" title="Toggle navigation menu" aria-label="Toggle navigation menu" class="navbar-toggler" />
+</div>
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav aria-label="Primary navigation">
+        <p class="nav-label">Operations</p>
+        <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><span aria-hidden="true">⌂</span> Dashboard</NavLink>
+        <NavLink class="nav-link" href="members"><span aria-hidden="true">◆</span> Members</NavLink>
+        <NavLink class="nav-link" href="activities"><span aria-hidden="true">◎</span> Activities</NavLink>
+        <NavLink class="nav-link" href="dues"><span aria-hidden="true">$</span> Dues</NavLink>
+
+        <AuthorizeView Policy="@Permissions.ManageUsers">
+            <Authorized>
+                <p class="nav-label nav-section">Administration</p>
+                <NavLink class="nav-link" href="admin/users"><span aria-hidden="true">⚙</span> User accounts</NavLink>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Policy="@Permissions.ViewAuditLog">
+            <Authorized>
+                <NavLink class="nav-link" href="admin/audit"><span aria-hidden="true">≡</span> Audit log</NavLink>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView>
+            <Authorized>
+                <p class="nav-label nav-section">Account</p>
+                <NavLink class="nav-link" href="Account/Manage"><span aria-hidden="true">●</span> Profile</NavLink>
+                <form action="Account/Logout" method="post">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="ReturnUrl" value="@currentUrl" />
+                    <button type="submit" class="nav-link nav-button"><span aria-hidden="true">←</span> Sign out</button>
+                </form>
+            </Authorized>
+            <NotAuthorized>
+                <p class="nav-label nav-section">Account</p>
+                <NavLink class="nav-link" href="Account/Login"><span aria-hidden="true">→</span> Sign in</NavLink>
+                <NavLink class="nav-link" href="Account/Register"><span aria-hidden="true">+</span> Request access</NavLink>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</div>
+
+@code {
+    private string currentUrl = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        currentUrl = NavigationManager.ToBaseRelativePath(e.Location);
+        StateHasChanged();
+    }
+
+    public void Dispose() => NavigationManager.LocationChanged -= OnLocationChanged;
+}

@@ -1,0 +1,66 @@
+.app-frame {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 17rem minmax(0, 1fr);
+}
+
+.sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    border-right: 1px solid var(--border);
+    background: linear-gradient(180deg, #101a13 0%, var(--surface-deep) 100%);
+}
+
+.main-stage { min-width: 0; }
+
+.command-bar {
+    min-height: 4rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: .75rem clamp(1rem, 3vw, 2.5rem);
+    border-bottom: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--background) 88%, transparent);
+    backdrop-filter: blur(12px);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    color: var(--text-muted);
+    font-size: .84rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.environment-dot {
+    display: inline-block;
+    width: .55rem;
+    height: .55rem;
+    margin-right: .55rem;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 .25rem color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.account-link { color: var(--text); }
+.content-shell { padding: clamp(1.25rem, 4vw, 3.5rem); }
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    inset: auto 1rem 1rem 1rem;
+    padding: 1rem 3rem 1rem 1rem;
+    border: 1px solid var(--danger);
+    background: #341313;
+    color: var(--text);
+}
+
+#blazor-error-ui .dismiss { position: absolute; right: .75rem; top: .45rem; }
+
+@media (max-width: 800px) {
+    .app-frame { display: block; }
+    .sidebar { position: relative; width: 100%; height: auto; }
+    .command-bar { position: relative; }
+}
