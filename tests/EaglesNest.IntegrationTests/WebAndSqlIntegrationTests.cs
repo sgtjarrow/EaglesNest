@@ -30,7 +30,11 @@ public sealed class WebAndSqlIntegrationTests : IAsyncLifetime
             {
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:DefaultConnection"] = _connectionString
+                    ["ConnectionStrings:DefaultConnection"] = _connectionString,
+                    ["BootstrapAdmin:UserName"] = string.Empty,
+                    ["BootstrapAdmin:Email"] = string.Empty,
+                    ["BootstrapAdmin:Password"] = string.Empty,
+                    ["BootstrapAdmin:MustChangePassword"] = string.Empty
                 });
             });
         });

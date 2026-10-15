@@ -30,19 +30,21 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost;
 dotnet user-secrets set "BootstrapAdmin:UserName" "your-admin-name" --project src/EaglesNest.Web
 dotnet user-secrets set "BootstrapAdmin:Email" "your-address@example.com" --project src/EaglesNest.Web
 dotnet user-secrets set "BootstrapAdmin:Password" "choose-a-long-bootstrap-password" --project src/EaglesNest.Web
+dotnet user-secrets set "BootstrapAdmin:MustChangePassword" "true" --project src/EaglesNest.Web
 dotnet tool run dotnet-ef database update --project src/EaglesNest.Infrastructure --startup-project src/EaglesNest.Web
 dotnet run --project src/EaglesNest.Web
 ```
 
-The application creates the first Admin only when no active Admin exists and requires that account to change its password immediately. After the first successful startup, remove the bootstrap values:
+The application creates the first Admin only when no active Admin exists. `BootstrapAdmin:MustChangePassword` defaults to `true` when omitted. Set it to `false` only when the bootstrap password is intentionally retained after the first sign-in. After the first successful startup, remove the bootstrap values:
 
 ```powershell
 dotnet user-secrets remove "BootstrapAdmin:UserName" --project src/EaglesNest.Web
 dotnet user-secrets remove "BootstrapAdmin:Email" --project src/EaglesNest.Web
 dotnet user-secrets remove "BootstrapAdmin:Password" --project src/EaglesNest.Web
+dotnet user-secrets remove "BootstrapAdmin:MustChangePassword" --project src/EaglesNest.Web
 ```
 
-The connection string and bootstrap credentials are never stored in tracked configuration. Visual Studio can launch `EaglesNest.Web` directly after the secrets are configured.
+The connection string and bootstrap credentials are never stored in tracked configuration, command scripts, migrations, logs, or audit details. Use protected Azure App Service settings or another deployment secret provider for Test and Prod, then remove or disable the bootstrap settings after each environment creates its first Admin. Reusing a retained bootstrap password across environments increases the impact of credential exposure. Visual Studio can launch `EaglesNest.Web` directly after the secrets are configured.
 
 ## Account workflow
 
